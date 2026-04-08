@@ -8,18 +8,12 @@ context is recoverable from `docs/llm-provider-abstraction-plan.md`.
 
 ## Dead code / safe deletes
 
-Things that compile but nothing calls. All deletable in a single
-cleanup pass once someone confirms no out-of-tree consumer reaches
-into them.
+_All items in this section were addressed in the Phase 6 cleanup
+commit. Kept for historical reference._
 
-- **`worth/lib/worth/llm/anthropic.ex`** — superseded by `AgentEx.LLM.Provider.Anthropic` in Phase 2. Not referenced from `Worth.LLM` anymore.
-- **`worth/lib/worth/llm/openai.ex`** — same.
-- **`worth/lib/worth/llm/openrouter.ex`** — same.
-- **`worth/lib/worth/llm/shim.ex`** — Phase 1 legacy projection layer, no longer called from anywhere after Phase 2.
-- **`worth/lib/worth/llm/adapter.ex`** — superseded by `AgentEx.LLM.Provider` behaviour.
-- **`worth/lib/worth/llm/cost.ex`** — `Worth.LLM.Cost.calculate/2` was never wired into a real call path. Phase 5 moved cost computation into `agent_ex/LLMCall` where it has access to the route + catalog. Safe to delete.
-- **`worth/lib/worth/brain.ex` `state.cost_total`** — still defined and incremented by the dead `{:cost, amount}` event handler in `handle_info/2`. Phase 5 made `:get_status` read from `Worth.Metrics.session_cost/0` instead. Both the field and the handler clause are deletable.
-- **`agent_ex/lib/agent_ex/model_router/free.ex`** — Phase 3's Catalog took over free-route discovery. The supervisor still starts `AgentEx.ModelRouter.Free` for backward compat with tests, but `resolve_all/1` no longer calls it.
+- ~~`worth/lib/worth/llm/{anthropic,openai,openrouter,shim,adapter,cost}.ex`~~ — **deleted**.
+- ~~`worth/lib/worth/brain.ex` `state.cost_total` field + dead `{:cost, amount}` handler~~ — **deleted**. UI consumers now read from `Worth.Metrics.session_cost/0`.
+- ~~`agent_ex/lib/agent_ex/model_router/free.ex`~~ — **deleted** along with its supervision tree entry.
 
 ## Worth.LLM projection layer retirement
 

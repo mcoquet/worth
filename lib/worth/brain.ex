@@ -8,7 +8,6 @@ defmodule Worth.Brain do
     :session_id,
     :history,
     :config,
-    :cost_total,
     :status,
     :mode,
     :profile,
@@ -118,7 +117,6 @@ defmodule Worth.Brain do
       session_id: generate_session_id(),
       history: [],
       config: Worth.Config.get_all(),
-      cost_total: 0.0,
       status: :idle,
       mode: mode,
       profile: mode_to_profile(mode),
@@ -229,28 +227,12 @@ defmodule Worth.Brain do
 
     state =
       case event do
-        {:cost, amount} ->
-          new_cost = state.cost_total + amount
-          limit = state.config[:cost_limit] || 5.0
-
-          if new_cost > limit do
-            if state.ui_pid,
-              do:
-                send(
-                  state.ui_pid,
-                  {:agent_event,
-                   {:error, "Cost limit exceeded ($#{Float.round(new_cost, 3)} / $#{Float.round(limit, 3)})"}}
-                )
-          end
-
-          %{state | cost_total: new_cost}
-
         {:status, status} ->
           %{state | status: status}
 
-        {:done, %{cost: cost}} ->
+        {:done, _} ->
           maybe_trigger_proactive_review(state)
-          %{state | status: :idle, cost_total: state.cost_total + (cost || 0.0)}
+          %{state | status: :idle}
 
         {:tool_call, %{name: name}} ->
           %{state | active_tools: state.active_tools ++ [name]}

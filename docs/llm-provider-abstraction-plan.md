@@ -1,6 +1,6 @@
 # LLM Provider Abstraction — Implementation Plan
 
-> Status: **Phase 5 complete. Phase 6 next.** Decisions locked.
+> Status: **All phases (1-6) complete.** Decisions locked. See `BACKLOG.md` for follow-up cleanup and refinement items.
 > Phases are written so each one is independently shippable. The plan
 > still expects refinement during implementation but the architectural
 > choices are settled. See the **Implementation progress** section at
@@ -1441,3 +1441,33 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 4. **`UsageManager` polls with a fixed 5-minute interval.** The `:agent_ex, :usage, :refresh_interval_ms` config key is read at boot but there's no live reload. Restart the app to change it. Acceptable for an observability cache.
 5. **The sidebar `:usage` tab is the 5th tab** (between `:status` and `:logs`). Tab number key `5` selects `:logs` per the existing `event_to_msg` handler — adding a 6th tab means either rebinding `5`→`:usage` and `6`→`:logs` (ugly because of tens), or accepting that `:usage` is reachable only via arrow keys. Left as-is for now; the user can adjust the keymap when they touch `root.ex` next.
 6. **Phase 6 (Anthropic prompt caching) will need to read `cache_read`/`cache_write` from the response and populate `Response.usage`.** The telemetry path is already wired — `LLMCall` reads `usage["cache_read"]`/`usage["cache_creation_input_tokens"]`/`usage["cache_read_input_tokens"]` defensively, so Phase 6 just needs the transport to populate them and the cost computation will start showing real cache savings.
+
+### Phase 6 — Anthropic prompt caching ✅ (2026-04-08)
+
+**Status:** Shipped. `mix compile --warnings-as-errors` clean in
+`agent_ex`; `agent_ex` 395 tests / `worth` 128 tests, 0 failures.
+
+**Files modified (agent_ex):**
+- `lib/agent_ex/llm/transport.ex` — extended `canonical_params` typespec to include `optional(:cache_control) => map() | nil`. Updated moduledoc to describe how transports may opt into provider-side prompt caching by reading `cache_control.prefix_changed`.
+- `lib/agent_ex/llm/provider.ex` — `build_canonical/2` now reads `cache_control` from the input params (both atom and string keys) via a new `normalize_cache_control/1` helper. The normalized form is `%{stable_hash:, prefix_changed:}` regardless of input key style.
+- `lib/agent_ex/llm/transport/anthropic_messages.ex` — `build_chat_request/2` now applies cache breakpoints when `cache_control.prefix_changed == false`. New helpers `cache_breakpoint_enabled?/1`, `apply_system_cache_control/2`, `apply_tool_cache_control/2`. The system prompt (whether passed as a string or as a list of content blocks) gets wrapped/marked with `cache_control: %{type: "ephemeral"}`. The last tool definition gets the same marker. `parse_chat_response/3` was already extracting `cache_creation_input_tokens` and `cache_read_input_tokens` into `Response.usage` (Phase 5 prep) — no change needed there.
+
+**Files created (agent_ex):**
+- `test/agent_ex/llm/transport/anthropic_messages_test.exs` — 9 new tests covering: `id/0`, no cache breakpoints when `cache_control` absent, no breakpoints when `prefix_changed: true`, system prompt cache marker when `prefix_changed: false`, last-tool cache marker, string-keyed cache_control map, nil-system handling, cache token extraction, and cache token defaults to 0.
+
+**Key design decisions:**
+
+1. **Cache the system prompt and the last tool definition.** Anthropic's prompt cache works in cumulative segments — a `cache_control` marker tells the API "cache everything up to and including this point." System prompt and tools change least often across turns, so caching them gets ~70% of the benefit per the plan's deliverable target. Per-message cache breakpoints would catch more savings but require knowing the stable/volatile message split, which lives in `LLMCall` and isn't exposed to the transport. Deferred as a refinement.
+2. **`cache_control` flows in via canonical params, not via opts.** `LLMCall` already builds `base_params["cache_control"] = %{"stable_hash" => ..., "prefix_changed" => ...}`. `Worth.LLM.chat_with_route` passes the params through `AgentEx.LLM.Provider.chat/3` which calls `build_canonical/2`. The new `build_canonical/2` reads `cache_control` and adds it to the canonical params map. Transports that don't care (OpenAIChatCompletions, Ollama) ignore the field; AnthropicMessages reads it.
+3. **`normalize_cache_control/1` accepts both atom and string keys.** `LLMCall` uses string keys (`%{"prefix_changed" => false}`), but tests and direct callers may use atoms. The normalizer produces a uniform atom-keyed shape for the transport.
+4. **System prompt structure.** Anthropic accepts both `system: "string"` and `system: [%{type: "text", text: ..., cache_control: %{type: "ephemeral"}}]`. When caching is enabled, we wrap a string into the structured form so we can attach the cache_control marker. When disabled, we leave the string as-is so the wire format stays minimal.
+5. **Tool cache marker is key-style-agnostic.** `apply_tool_cache_control/2` checks whether the tool map uses atom or string keys (`Map.has_key?(last, :name)`) and inserts `cache_control` with the matching key style. Jason serializes both the same way on the wire, but mixing key styles within a single map looks ugly in iex/inspect. This keeps tools consistent.
+6. **`parse_chat_response/3` already populated `cache_read`/`cache_write` from Phase 5 prep work.** The cost computation in `LLMCall.compute_cost/2` already reads these fields and multiplies them by `Model.cost.cache_read`/`cache_write`. Anthropic provider's `default_models/0` already has those rates. Phase 6 just connects the wire-level data flow.
+
+**Judgment calls / follow-ups:**
+
+1. **Cache hit ratio in the sidebar.** `Worth.Metrics` already accumulates `cache_read`/`cache_write` totals via the existing `[:agent_ex, :llm_call, :stop]` telemetry handler. The `:usage` sidebar tab shows them as raw counts (`Cache: N read / N write`). A "hit ratio" or "savings" line on top of those is straightforward to add but deferred — gets tracked in `BACKLOG.md`.
+2. **Per-message cache breakpoints.** The current implementation caches up through tools. For very long system prompts that include workspace snapshots or large core instructions, this captures most of the savings. For long conversation histories where the early messages are stable, an additional cache breakpoint on the last stable user message would help. Requires plumbing the stable/volatile split point through to the transport — deferred as a future refinement.
+3. **No real-world verification yet.** Tests cover the request shape and the parse path but not actual Anthropic API behavior. A live smoke test (with `LIVE_TESTS=1` env gate) is in `BACKLOG.md` under "Test infrastructure".
+4. **No per-call opt-out.** Cache breakpoints are always added when `prefix_changed: false`. There's no way to disable caching for a specific call. The `cache_control` field could grow a `:disabled` flag if a future caller needs it, but no caller does today.
+5. **Wire format on first turn is unchanged.** The first call after a prefix change has `prefix_changed: true` (LLMCall computes the hash, sees it differs from the previous, and sets the flag). On that call no cache_control markers are added — the request looks identical to the pre-Phase-6 wire format. Cache markers only start appearing on the second-and-subsequent calls of a stable prefix sequence, which is exactly when the cache pays off.

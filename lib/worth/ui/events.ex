@@ -9,15 +9,14 @@ defmodule Worth.UI.Events do
   """
 
   def drain(state) do
+    state = %{state | cost: Worth.Metrics.session_cost()}
+
     receive do
       {:agent_event, {:text_chunk, chunk}} ->
         drain(%{state | streaming_text: state.streaming_text <> chunk})
 
       {:agent_event, {:status, status}} ->
         drain(%{state | status: status})
-
-      {:agent_event, {:cost, amount}} ->
-        drain(%{state | cost: state.cost + amount})
 
       {:agent_event, {:model_selected, info}} ->
         tier = Map.get(info, :tier, :primary)
