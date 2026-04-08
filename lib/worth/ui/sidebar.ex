@@ -2,20 +2,22 @@ defmodule Worth.UI.Sidebar do
   @moduledoc """
   Right-hand sidebar with tab indicator and per-tab content.
 
-  Tabs: `:workspace`, `:tools`, `:skills`, `:status`. The active tab is
-  driven by `state.sidebar_tab`; rendering is otherwise stateless.
+  Tabs: `:workspace`, `:tools`, `:skills`, `:status`, `:usage`, `:logs`.
+  The active tab is driven by `state.selected_tab`; rendering is
+  otherwise stateless.
   """
 
   import TermUI.Component.Helpers
-  alias TermUI.Renderer.Style
 
-  @tabs [:workspace, :tools, :skills, :status, :logs]
+  @tabs [:workspace, :tools, :skills, :status, :usage, :logs]
   @log_tail 50
 
-  def render(state) do
-    header = box([text("[#{tab_dots(state.sidebar_tab)}]", TermUI.Renderer.Style.new(fg: :cyan))])
+  def render(state, opts \\ []) do
+    width = Keyword.get(opts, :sidebar_width, 30)
+    active = Map.get(state, :selected_tab, :status)
+    header = box([text("[#{tab_dots(active)}]", TermUI.Renderer.Style.new(fg: :cyan))], width: width)
 
-    content = box(tab_content(state), style: TermUI.Renderer.Style.new(bg: :black))
+    content = box(tab_content(state, active), width: width, style: TermUI.Renderer.Style.new(bg: :black))
 
     stack(:vertical, [header, content])
   end
@@ -24,11 +26,12 @@ defmodule Worth.UI.Sidebar do
     Enum.map_join(@tabs, "", fn t -> if t == active, do: "●", else: "○" end)
   end
 
-  defp tab_content(%{sidebar_tab: :workspace} = state), do: workspace_tab(state)
-  defp tab_content(%{sidebar_tab: :tools} = state), do: tools_tab(state)
-  defp tab_content(%{sidebar_tab: :skills} = state), do: skills_tab(state)
-  defp tab_content(%{sidebar_tab: :status} = state), do: status_tab(state)
-  defp tab_content(%{sidebar_tab: :logs} = state), do: logs_tab(state)
+  defp tab_content(state, :workspace), do: workspace_tab(state)
+  defp tab_content(state, :tools), do: tools_tab(state)
+  defp tab_content(state, :skills), do: skills_tab(state)
+  defp tab_content(state, :status), do: status_tab(state)
+  defp tab_content(state, :usage), do: usage_tab(state)
+  defp tab_content(state, :logs), do: logs_tab(state)
 
   def workspace_tab(_state) do
     ws_list = Worth.Workspace.Service.list()
@@ -49,7 +52,10 @@ defmodule Worth.UI.Sidebar do
     skills = Worth.Skill.Registry.all()
 
     if skills == [] do
-      [text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])), text("  (none)", TermUI.Renderer.Style.new(fg: :bright_black))]
+      [
+        text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])),
+        text("  (none)", TermUI.Renderer.Style.new(fg: :bright_black))
+      ]
     else
       lines = Enum.map(skills, fn s -> "  #{s.name} [#{s.trust_level}]" end)
       [text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
@@ -71,7 +77,10 @@ defmodule Worth.UI.Sidebar do
       text("    primary:     #{model_line(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
       text("      via #{source_line(primary)} #{model_meta(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
       text("    lightweight: #{model_line(lightweight)}", TermUI.Renderer.Style.new(fg: :bright_black)),
-      text("      via #{source_line(lightweight)} #{model_meta(lightweight)}", TermUI.Renderer.Style.new(fg: :bright_black))
+      text(
+        "      via #{source_line(lightweight)} #{model_meta(lightweight)}",
+        TermUI.Renderer.Style.new(fg: :bright_black)
+      )
     ]
 
     provider_lines =
@@ -96,6 +105,95 @@ defmodule Worth.UI.Sidebar do
       model_lines ++ [text("  Providers", TermUI.Renderer.Style.new(attrs: [:bold])) | provider_lines]
     end
   end
+
+  def usage_tab(_state) do
+    metrics = Worth.Metrics.session()
+    snapshots = AgentEx.LLM.UsageManager.snapshot()
+
+    provider_lines =
+      if snapshots == [] do
+        [text("  (no providers expose quota)", TermUI.Renderer.Style.new(fg: :bright_black))]
+      else
+        Enum.flat_map(snapshots, &usage_snapshot_lines/1)
+      end
+
+    session_lines =
+      [
+        text("Session", TermUI.Renderer.Style.new(attrs: [:bold])),
+        text("  Cost:    $#{Float.round(metrics.cost, 4)} (#{metrics.calls} calls)"),
+        text("  Tokens:  #{format_int(metrics.input_tokens)} in / #{format_int(metrics.output_tokens)} out"),
+        text(
+          "  Cache:   #{format_int(metrics.cache_read)} read / #{format_int(metrics.cache_write)} write",
+          TermUI.Renderer.Style.new(fg: :bright_black)
+        ),
+        text("  Embed:   #{metrics.embed_calls} calls", TermUI.Renderer.Style.new(fg: :bright_black))
+      ]
+
+    by_provider_lines =
+      case Map.to_list(metrics.by_provider) do
+        [] ->
+          []
+
+        entries ->
+          [text("  By provider", TermUI.Renderer.Style.new(attrs: [:bold]))] ++
+            Enum.map(entries, fn {provider, p} ->
+              label = format_provider(provider)
+              text(
+                "    #{label}  $#{Float.round(p.cost, 4)} (#{p.calls})",
+                TermUI.Renderer.Style.new(fg: :bright_black)
+              )
+            end)
+      end
+
+    [
+      text("Usage", TermUI.Renderer.Style.new(attrs: [:bold])),
+      text("Providers", TermUI.Renderer.Style.new(attrs: [:bold]))
+    ] ++ provider_lines ++ session_lines ++ by_provider_lines
+  end
+
+  defp usage_snapshot_lines(%AgentEx.LLM.Usage{label: label, credits: credits, windows: windows}) do
+    header =
+      text("  #{label}", TermUI.Renderer.Style.new(fg: :white))
+
+    credit_line =
+      case credits do
+        %{used: used, limit: limit} ->
+          [text("    credits: $#{Float.round(used, 2)} / $#{Float.round(limit, 2)}", TermUI.Renderer.Style.new(fg: :bright_black))]
+
+        _ ->
+          []
+      end
+
+    window_lines =
+      Enum.map(windows, fn w ->
+        text("    #{w.label}: #{format_window(w)}", TermUI.Renderer.Style.new(fg: :bright_black))
+      end)
+
+    [header] ++ credit_line ++ window_lines
+  end
+
+  defp format_window(%AgentEx.LLM.UsageWindow{used: used, limit: limit, unit: unit})
+       when is_number(limit) do
+    used_str = if is_number(used), do: "#{used}", else: "?"
+    "#{used_str}/#{limit} #{unit}"
+  end
+
+  defp format_window(_), do: "?"
+
+  defp format_provider(name) when is_atom(name), do: Atom.to_string(name)
+  defp format_provider(name) when is_binary(name), do: name
+  defp format_provider(other), do: inspect(other)
+
+  defp format_int(n) when is_integer(n) and n >= 1000 do
+    n
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
+  defp format_int(n) when is_integer(n), do: Integer.to_string(n)
+  defp format_int(_), do: "0"
 
   defp model_meta(%{context_window: ctx}) when is_integer(ctx) and ctx > 0 do
     ctx_k = div(ctx, 1000)

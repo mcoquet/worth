@@ -31,6 +31,7 @@ defmodule Worth.UI.Commands do
       ["/memory", "query", query] -> {:command, {:memory, {:query, query}}}
       ["/memory", "note" | note_parts] -> {:command, {:memory, {:note, Enum.join(note_parts, " ")}}}
       ["/memory", "recent"] -> {:command, {:memory, :recent}}
+      ["/memory", "reembed"] -> {:command, {:memory, :reembed}}
       ["/skill", "list"] -> {:command, {:skill, :list}}
       ["/skill", "read", name] -> {:command, {:skill, {:read, name}}}
       ["/skill", "remove", name] -> {:command, {:skill, {:remove, name}}}
@@ -51,6 +52,8 @@ defmodule Worth.UI.Commands do
       ["/provider", "enable", id] -> {:command, {:provider, {:enable, String.to_atom(id)}}}
       ["/provider", "disable", id] -> {:command, {:provider, {:disable, String.to_atom(id)}}}
       ["/catalog", "refresh"] -> {:command, {:catalog, :refresh}}
+      ["/usage"] -> {:command, :usage}
+      ["/usage", "refresh"] -> {:command, {:usage, :refresh}}
       ["/skill" | _] -> {:command, {:skill, :help}}
       ["/" <> _ = cmd | _] -> {:command, {:unknown, cmd}}
       _ -> :message
@@ -82,7 +85,8 @@ defmodule Worth.UI.Commands do
   def handle({:command, :quit}, _text, state), do: {state, [Command.quit()]}
 
   def handle({:command, :clear}, _text, state) do
-    {%{state | messages: [], streaming_text: ""}, []}
+    Worth.Metrics.reset()
+    {%{state | messages: [], streaming_text: "", cost: 0.0, turn: 0}, []}
   end
 
   def handle({:command, :cost}, _text, state) do
@@ -155,6 +159,17 @@ defmodule Worth.UI.Commands do
       {:error, reason} ->
         {append_error(state, "Failed to add note: #{inspect(reason)}"), []}
     end
+  end
+
+  def handle({:command, {:memory, :reembed}}, _text, state) do
+    parent = self()
+
+    Task.start(fn ->
+      result = Worth.Tools.Memory.Reembed.run([])
+      send(parent, {:reembed_done, result})
+    end)
+
+    {append_system(state, "Re-embedding memories in the background... (results will follow)"), []}
   end
 
   def handle({:command, {:memory, :recent}}, _text, state) do
@@ -384,6 +399,55 @@ defmodule Worth.UI.Commands do
     {append_system(state, "Catalog refresh triggered. #{info.model_count} models loaded."), []}
   end
 
+  def handle({:command, :usage}, _text, state) do
+    metrics = Worth.Metrics.session()
+    snapshots = AgentEx.LLM.UsageManager.snapshot()
+
+    provider_section =
+      if snapshots == [] do
+        "Providers: (no quota endpoints)"
+      else
+        lines =
+          Enum.map_join(snapshots, "\n", fn s ->
+            credit =
+              case s.credits do
+                %{used: u, limit: l} -> " — credits $#{Float.round(u, 2)}/$#{Float.round(l, 2)}"
+                _ -> ""
+              end
+
+            "  #{s.label}#{credit}"
+          end)
+
+        "Providers:\n#{lines}"
+      end
+
+    by_provider =
+      case Map.to_list(metrics.by_provider) do
+        [] ->
+          ""
+
+        entries ->
+          lines =
+            Enum.map_join(entries, "\n", fn {provider, p} ->
+              "  #{provider}  $#{Float.round(p.cost, 4)} (#{p.calls} calls)"
+            end)
+
+          "\nBy provider:\n#{lines}"
+      end
+
+    msg = """
+    #{provider_section}
+    Session: $#{Float.round(metrics.cost, 4)} | #{metrics.calls} calls | #{metrics.input_tokens} in / #{metrics.output_tokens} out#{by_provider}
+    """
+
+    {append_system(state, String.trim(msg)), []}
+  end
+
+  def handle({:command, {:usage, :refresh}}, _text, state) do
+    AgentEx.LLM.UsageManager.refresh()
+    {append_system(state, "Usage refresh triggered."), []}
+  end
+
   def handle({:command, {:skill, :help}}, _text, state) do
     msg =
       "Skill commands:\n  /skill list\n  /skill read <name>\n  /skill remove <name>\n  /skill history <name>\n  /skill rollback <name> <version>\n  /skill refine <name>"
@@ -446,6 +510,7 @@ defmodule Worth.UI.Commands do
       /memory query <q>    Search global memory
       /memory note <t>     Add note to working memory
       /memory recent       Show recent memories
+      /memory reembed      Re-embed all stored memories with the current model
       /skill list          List skills
       /skill read <name>   Read skill content
       /skill remove <n>    Remove a skill
@@ -466,6 +531,8 @@ defmodule Worth.UI.Commands do
       /provider enable <id> Enable a provider
       /provider disable <id> Disable a provider
       /catalog refresh     Refresh model catalog from providers
+      /usage               Show provider quota and session cost
+      /usage refresh       Refresh usage snapshots
       Tab                  Toggle sidebar
       Up/Down              Command history
     """

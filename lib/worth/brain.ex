@@ -141,7 +141,7 @@ defmodule Worth.Brain do
   def handle_call(:get_status, _from, state) do
     status = %{
       status: state.status,
-      cost: state.cost_total,
+      cost: Worth.Metrics.session_cost(),
       workspace: state.current_workspace,
       mode: state.mode,
       profile: state.profile,
@@ -183,6 +183,7 @@ defmodule Worth.Brain do
 
     tiers = Worth.Workspace.Identity.tier_overrides(path)
     AgentEx.ModelRouter.set_tier_overrides(tiers)
+    Worth.Metrics.reset()
 
     {:reply, :ok, new_state}
   end

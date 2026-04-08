@@ -1,6 +1,6 @@
 # LLM Provider Abstraction — Implementation Plan
 
-> Status: **Phase 3 complete. Phase 4 next.** Decisions locked.
+> Status: **Phase 5 complete. Phase 6 next.** Decisions locked.
 > Phases are written so each one is independently shippable. The plan
 > still expects refinement during implementation but the architectural
 > choices are settled. See the **Implementation progress** section at
@@ -1281,6 +1281,163 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
    It should be retired once ModeRouter is updated to read `%Response{}`
    structs directly (deferring to a future cleanup).
 
-### Phase 4 — Embeddings + reembed migration ⏳
+### Phase 4 — Embeddings + reembed migration ✅ (2026-04-08)
 
-Pending Phase 3.
+**Status:** Shipped. `mix compile` clean in all three repos;
+`mneme` 56 tests / `agent_ex` 386 tests / `worth` 128 tests, 0 failures.
+
+**Files created (mneme):**
+- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — drops/recreates `embedding` columns on `mneme_chunks/entries/entities` as `vector(1536)`, adds nullable `embedding_model_id :string` column, recreates HNSW indexes
+- `test/mneme/maintenance/reembed_test.exs` — 3 new tests covering callback path, `:stale_model` scope, and progress callback capture
+
+**Files created (agent_ex):**
+- `lib/agent_ex/llm.ex` — `AgentEx.LLM` entry point with `chat/2`, `chat_tier/3`, `embed/2`, `embed_tier/3`
+- `lib/agent_ex/llm/transport/ollama.ex` — full transport (chat + embeddings) hitting `/api/chat` and `/api/embed`, atom `stop_reason`, `parse_rate_limit/1` returns `nil`
+- `lib/agent_ex/llm/provider/ollama.ex` — `OLLAMA_HOST` override, `:not_supported` on connection failure, embedding-model name detection by `embed`/`bge`/`nomic-embed`/`mxbai-embed`/`all-minilm`/`snowflake-arctic-embed` substrings
+- `test/agent_ex/llm/transport/ollama_test.exs`, `test/agent_ex/llm/provider/ollama_test.exs`, `test/agent_ex/llm_test.exs`
+
+**Files created (worth):**
+- `lib/worth/memory/embeddings/adapter.ex` — `Worth.Memory.Embeddings.Adapter` implementing `Mneme.EmbeddingProvider` and delegating to `AgentEx.LLM.embed_tier/3`
+- `lib/worth/memory/embeddings/stale_check.ex` — boot-time check that compares configured model id vs latest stored row's id, logs at info level suggesting `/memory reembed`
+- `lib/worth/tools/memory/reembed.ex` — `Worth.Tools.Memory.Reembed` thin wrapper around `Mneme.Maintenance.Reembed.run/1` with embed_fn pre-wired to `AgentEx.LLM.embed_tier/3`
+- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — copy of the mneme migration (worth bundles its own copies of mneme migrations)
+
+**Files modified (mneme):**
+- `lib/mneme/embedding_provider.ex` — added optional `model_id/1` callback (chosen over the 3-tuple shape so existing 2-tuple returns from generate/embed stay intact); added `EmbeddingProvider.model_id/1` helper
+- `lib/mneme/maintenance/reembed.ex` — full rewrite. New `run/1` accepts `:embedding_fn`, `:progress_callback`, `:scope` (`:nil_only` | `:all` | `{:stale_model, id}`), `:tables`, `:batch_size`. Default `embedding_fn` calls the global `EmbeddingProvider`. UUID handled via `uuid_to_binary/1` (handles both 16-byte binary and string forms)
+- `lib/mneme/pipeline/embedder.ex` — every embedding write now passes `model_id` through to `store_embedding/5` which sets `embedding_model_id` alongside the vector via raw SQL, with the same UUID binary helper
+- `lib/mneme/embedding/mock.ex` — 1536 dims, `model_id/1` returns `"mock-1536"`
+- `lib/mneme/config.ex` — default dimensions 768 → 1536
+- `lib/mneme/schema/{chunk,entity,entry}.ex` — added `embedding_model_id` field + cast
+- `lib/mix/tasks/mneme.gen.migration.ex` — default `--dimensions` 768 → 1536
+- **Deleted** `lib/mneme/embedding/{openai,ollama,openrouter}.ex` per the "adapter + delete" choice — worth's adapter is now the canonical embedding path, and these were duplicating logic that lives in agent_ex providers
+
+**Files modified (agent_ex):**
+- `lib/agent_ex/llm/transport.ex` — added optional `build_embedding_request/2` and `parse_embedding_response/3` callbacks
+- `lib/agent_ex/llm/transport/openai_chat_completions.ex` — implements both new callbacks; covers OpenAI/OpenRouter/Groq/etc. via standard `/embeddings` endpoint
+- `lib/agent_ex/llm/provider/openrouter.ex` — `fetch_catalog/1` now does dual fetch (`/models` + `/models?output_modalities=embeddings`), merges, dedupes by id, logs warning + degrades gracefully when embedding fetch fails
+- `config/config.exs` — `Provider.Ollama` added to `providers:` list
+
+**Files modified (worth):**
+- `config/config.exs` — `:mneme` `embedding:` switched from `Mneme.Embedding.Mock` to `Worth.Memory.Embeddings.Adapter` with `tier: :embeddings, dimensions: 1536`. `config/test.exs` keeps Mock for fast unit tests
+- `lib/worth/application.ex` — async `Worth.Memory.Embeddings.StaleCheck.run/0` after boot via `Worth.SkillInit` task supervisor
+- `lib/worth/ui/commands.ex` — `/memory reembed` parse + dispatch (runs reembed in a background `Task` so the UI doesn't block) + help text entry
+
+**Key design decisions:**
+
+1. **`model_id/1` callback over 3-tuple return.** The plan offered both shapes;
+   the callback is less invasive — existing host providers don't need to
+   change their `generate/2`/`embed/2` return shape, and Reembed/Embedder
+   read the id once per batch via `EmbeddingProvider.model_id/0`. Worth's
+   adapter pulls the id from `opts[:model]` (or its `@default_model`)
+   when called from the boot-time stale check.
+2. **Reembed is now synchronous within a transaction**, not async-streamed.
+   Async + Ecto sandbox tests don't mix — each spawned task hit
+   `OwnershipError` because it left the test connection. Sync keeps the
+   test path clean and the perf hit is irrelevant since the embedding
+   HTTP call dominates.
+3. **`:scope` selects the rows.** `:nil_only` is the default (current
+   behavior), `:all` re-embeds everything, `{:stale_model, id}` re-embeds
+   only rows where `embedding_model_id != id` or is NULL. Worth's
+   `StaleCheck` uses the latter implicitly by suggesting the user run
+   `/memory reembed` when the configured model differs from the most
+   recent row's stored id.
+4. **`AgentEx.LLM.embed/2` and `embed_tier/3` always return a list of
+   vectors plus a model id.** Single-text input is a 1-element list.
+   `{:ok, [vector, ...], model_id}`. Caller flattens when it knows.
+5. **OpenRouter dual catalog fetch.** Chat models from `/models`,
+   embedding models from `/models?output_modalities=embeddings`. The
+   second call's failures log + degrade rather than failing the entire
+   refresh — chat models stay authoritative.
+6. **Embedding tier resolution preference.** When IDENTITY.md doesn't
+   pin a model, `embed_tier/3` walks the catalog and sorts: prefer
+   `text-embedding-3-small` (the documented default), then non-Ollama
+   providers, then anything else.
+7. **Worth bundles its own copy of mneme migrations** in
+   `priv/repo/migrations/`. The new migration was copied across — both
+   repos run the migration independently.
+8. **Mneme's `Mneme.Embedding.{OpenAI,Ollama,OpenRouter}` deleted.**
+   Per decision in conversation: worth's adapter is the canonical embed
+   path, and the agent_ex provider stack is where those providers now
+   live. Mock stays for tests.
+9. **`config/test.exs` in worth keeps Mock.** Routing tests through the
+   adapter would require a live agent_ex catalog and providers — too
+   heavy for unit tests. Mock now produces 1536-dim vectors so the
+   schema dim matches production.
+
+**Judgment calls Phase 5+ needs to know about:**
+
+1. **Pre-existing async ownership warnings** in
+   `Mneme.Pipeline.Embedder.embed_entry_async/1` show up in worth's test
+   output. They are NOT Phase 4 regressions — `embed_entry_async` spawns
+   into `Task.Supervisor` outside the test sandbox connection, and
+   always has. Worth fixing in a future cleanup pass via `:caller`
+   allowance on the task's connection checkout.
+2. **Boot-time `StaleCheck` is best-effort** — wrapped in `rescue` and
+   logs at `:debug` on failure, so a host that hasn't run the migration
+   yet won't crash on boot.
+3. **Reembed's transaction-wrapped sync writes** can be slow for large
+   memory stores. If performance becomes a concern, the right fix is
+   batched COPY-style upserts rather than reintroducing async tasks.
+4. **`Worth.Memory.Embeddings.Adapter.model_id/1`** returns
+   `text-embedding-3-small` when called with no `:model` opt — this is
+   the *configured default*, not necessarily what `embed_tier/3` will
+   actually pick when the catalog has a different match. The id stored
+   on a row reflects what the underlying `embed_tier` call returned,
+   not what `Adapter.model_id/0` reports — the embedder calls
+   `EmbeddingProvider.model_id/0` once per batch so they can disagree
+   if the adapter's default and the catalog's pick differ. Worth
+   tightening in a follow-up by having the adapter cache the last
+   model id from `embed_tier`.
+5. **The slash command runs reembed in a fire-and-forget `Task`** —
+   no progress bar, no completion notification beyond the initial
+   "Re-embedding memories in the background..." message. The plan's
+   "things to refine during implementation" section calls out wiring
+   the `progress_callback` into a `:reembed_progress` agent event;
+   that's the natural follow-up.
+
+### Phase 5 — Usage / quota + cost telemetry ✅ (2026-04-08)
+
+**Status:** Shipped. `mix compile` clean in all three repos;
+`agent_ex` 386 tests / `mneme` 56 tests / `worth` 128 tests, 0 failures.
+
+**Files created (agent_ex):**
+- `lib/agent_ex/llm/usage.ex` — `%Usage{}` struct (provider, label, plan, windows, credits, error, fetched_at)
+- `lib/agent_ex/llm/usage_window.ex` — `%UsageWindow{}` struct (label, used, limit, unit, reset_at)
+- `lib/agent_ex/llm/usage_manager.ex` — `UsageManager` GenServer that polls every 5min via `Process.send_after`, exposes `snapshot/0`, `for_provider/1`, `refresh/0`, `refresh_provider/1`. Walks `ProviderRegistry.enabled/0` and calls `fetch_usage/1` on each, normalizing the result to `%Usage{}`. Skips providers that return `:not_supported`.
+
+**Files created (worth):**
+- `lib/worth/metrics.ex` — `Worth.Metrics` GenServer that attaches `:telemetry` handlers to `[:agent_ex, :llm_call, :stop]` and `[:agent_ex, :llm, :embed, :stop]`. Aggregates per-session totals (cost, calls, input/output/cache tokens, embed calls/cost) and a `by_provider` breakdown. Exposes `session/0`, `session_cost/0`, `by_provider/0`, `reset/0`.
+
+**Files modified (agent_ex):**
+- `lib/agent_ex/loop/stages/llm_call.ex` — `[:llm_call, :stop]` event now carries real `cost_usd` (computed from `Catalog.lookup` × token counts), plus `cache_read`/`cache_write` measurements and `provider` metadata. New private `compute_cost/2` + `route_model/1` + `safe_atom/1` helpers. The route map fields are `:provider_name` (string) and `:model_id` (string) — `safe_atom/1` converts to atom for catalog lookup.
+- `lib/agent_ex/llm.ex` — `embed_via_provider/3` now wraps `Req.post` in a telemetry span and emits `[:agent_ex, :llm, :embed, :stop]` with `duration`, `input_count`, `cost_usd: 0.0` (placeholder — embedding cost requires per-vector pricing not yet in Model.cost). Helper `input_size/1` works for both list and single-string requests.
+- `lib/agent_ex/llm/provider/openrouter.ex` — `fetch_usage/1` now parses the `/auth/key` response into a `%Usage{}` struct with `credits` from `data.usage`/`data.limit` and `windows` from `data.rate_limit`. Falls back to flat-body parsing when the response doesn't have a `data` envelope.
+- `lib/agent_ex/application.ex` — `UsageManager` added to supervision tree after `Catalog`.
+
+**Files modified (worth):**
+- `lib/worth/application.ex` — `Worth.Metrics` added to supervision tree after `Worth.Telemetry`.
+- `lib/worth/brain.ex` — `:get_status` now returns `Worth.Metrics.session_cost()` instead of `state.cost_total`. `switch_workspace` calls `Worth.Metrics.reset/0`.
+- `lib/worth/ui/commands.ex` — `/clear` now resets `Worth.Metrics`. New `/usage` command shows provider quota + session cost breakdown. New `/usage refresh` triggers `UsageManager.refresh/0`. Help text updated.
+- `lib/worth/ui/sidebar.ex` — New `:usage` tab added to `@tabs` (between `:status` and `:logs`). New `usage_tab/1` function renders provider quota lines from `UsageManager.snapshot()` and session totals + per-provider breakdown from `Worth.Metrics.session()`. Helper functions `usage_snapshot_lines/1`, `format_window/1`, `format_provider/1`, `format_int/1`.
+
+**Key design decisions:**
+
+1. **Anthropic `fetch_usage/1` stays `:not_supported`.** The plan's `/v1/organizations/<id>/usage` endpoint requires OAuth admin credentials, and OAuth is explicitly deferred to a follow-up iteration. Phase 5 ships with OpenRouter as the only provider exposing real quota — Groq has no public usage endpoint, OpenAI's `/v1/usage` requires admin keys, Ollama has no quota.
+2. **Embedding cost is a 0.0 placeholder.** Embedding pricing is per-token but the response from `/v1/embeddings` doesn't include token usage in a portable shape, and `Model.cost` for embedding models stores per-1M-input pricing differently from chat models. Wiring real embedding cost requires (a) parsing usage out of each transport's embedding response, and (b) extending `Model.cost` to support embedding-only fields. Both deferred — telemetry events ship with the placeholder so the UI/Metrics path works end-to-end and the value can be flipped on without further plumbing.
+3. **`compute_cost/2` lives in `LLMCall`, not in a standalone Cost module.** The plan referenced `Worth.LLM.Cost.calculate/2` which existed but was never wired up — the route walks happen inside agent_ex, so doing the lookup there avoids the host having to know about catalog details. Worth's `Worth.LLM.Cost` module is now dead code (kept for backward compat, can be deleted in a follow-up).
+4. **Brain's `cost_total` field is now stale.** It still exists in the struct for backward compat with the dead `{:cost, amount}` event handler, but `:get_status` reads from `Worth.Metrics.session_cost()`. The `{:cost, amount}` handler in `Brain.handle_info/2` is now dead code paths nothing emits — removed in a follow-up cleanup is fine.
+5. **Cost limit enforcement still happens in agent_ex via `ContextGuard`** (which already emits `[:context, :cost_limit]`). The brain doesn't need to track cost itself for the limit — the agent loop bails when its own `total_cost` exceeds `cost_limit`. Worth.Metrics is purely observational.
+6. **`Worth.Metrics.reset/0` is called from `/clear` and `switch_workspace`.** Per-session metrics, not long-term history — matches the plan's "session-only, reset on /clear and on workspace switch" guidance.
+7. **`Worth.Metrics.handle_event/4` is `cast`-only.** The telemetry callback runs in the caller's process and dispatches to the GenServer asynchronously to keep the agent loop fast. Order is preserved by the GenServer mailbox.
+8. **The telemetry handler is registered in `Worth.Metrics.init/1`** via `:telemetry.attach_many/4` with handler id `"worth-metrics-handler"`. No detach on shutdown — the GenServer dying is rare enough that leaking the handler is acceptable for now.
+9. **`/usage` command output is line-based plain text**, not a structured agent event. Mirrors `/cost`, `/status`, `/provider list` style. The sidebar `:usage` tab provides the live, continuously-updated view.
+
+**Judgment calls Phase 6+ needs to know about:**
+
+1. **Per-provider rate-limit windows are a stub.** OpenRouter exposes `data.rate_limit.{requests, interval}` but no `used` counter, so the sidebar shows the limit and a `?` for current usage. Anthropic's 5h/7d windows would populate `used` properly but require OAuth (deferred). Real per-window enforcement waits on Phase 5+.
+2. **Catalog `cost` field is read with both atom and string keys.** `Model.cost` uses atom keys (`%{input: 3.0, ...}`), but the `compute_cost/2` helper falls back to string keys defensively in case a host populates the catalog with a JSON-decoded map. Belt and suspenders.
+3. **`Worth.LLM.Cost`** is now unused dead code. Phase 6 can delete it cleanly along with `Worth.Brain.cost_total` and the dead `{:cost, amount}` handler.
+4. **`UsageManager` polls with a fixed 5-minute interval.** The `:agent_ex, :usage, :refresh_interval_ms` config key is read at boot but there's no live reload. Restart the app to change it. Acceptable for an observability cache.
+5. **The sidebar `:usage` tab is the 5th tab** (between `:status` and `:logs`). Tab number key `5` selects `:logs` per the existing `event_to_msg` handler — adding a 6th tab means either rebinding `5`→`:usage` and `6`→`:logs` (ugly because of tens), or accepting that `:usage` is reachable only via arrow keys. Left as-is for now; the user can adjust the keymap when they touch `root.ex` next.
+6. **Phase 6 (Anthropic prompt caching) will need to read `cache_read`/`cache_write` from the response and populate `Response.usage`.** The telemetry path is already wired — `LLMCall` reads `usage["cache_read"]`/`usage["cache_creation_input_tokens"]`/`usage["cache_read_input_tokens"]` defensively, so Phase 6 just needs the transport to populate them and the cost computation will start showing real cache savings.

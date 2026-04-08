@@ -11,6 +11,7 @@ defmodule Worth.Application do
       {Registry, keys: :unique, name: Worth.Registry},
       {Task.Supervisor, name: Worth.TaskSupervisor},
       Worth.Telemetry,
+      Worth.Metrics,
       Worth.Mcp.Broker,
       Worth.Mcp.ConnectionMonitor,
       Worth.Brain.Supervisor,
@@ -25,6 +26,10 @@ defmodule Worth.Application do
 
         Task.Supervisor.start_child(Worth.SkillInit, fn ->
           Worth.Mcp.Broker.connect_auto()
+        end)
+
+        Task.Supervisor.start_child(Worth.SkillInit, fn ->
+          Worth.Memory.Embeddings.StaleCheck.run()
         end)
 
         {:ok, pid}

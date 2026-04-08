@@ -42,8 +42,9 @@ config :worth, Worth.Repo,
 config :mneme,
   repo: Worth.Repo,
   embedding: [
-    provider: Mneme.Embedding.Mock,
-    mock: true
+    provider: Worth.Memory.Embeddings.Adapter,
+    tier: :embeddings,
+    dimensions: 1536
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
