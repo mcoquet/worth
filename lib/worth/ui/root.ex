@@ -70,9 +70,24 @@ defmodule Worth.UI.Root do
   # ----- event_to_msg -----
 
   @impl true
-  def event_to_msg(%Event.Key{key: k} = e, _state) when k in ~w(left right home end enter backspace up down) do
+  def event_to_msg(%Event.Key{key: :tab}, _state), do: {:msg, :toggle_sidebar}
+
+  @impl true
+  def event_to_msg(%Event.Key{key: k} = e, _state) when k in ~w(left right home end) do
     {:msg, {:tabs_event, e}}
   end
+
+  @impl true
+  def event_to_msg(%Event.Key{key: :backspace}, _state), do: {:msg, :backspace}
+
+  @impl true
+  def event_to_msg(%Event.Key{key: :enter}, _state), do: {:msg, :submit_input}
+
+  @impl true
+  def event_to_msg(%Event.Key{key: :up}, _state), do: {:msg, :history_prev}
+
+  @impl true
+  def event_to_msg(%Event.Key{key: :down}, _state), do: {:msg, :history_next}
 
   @impl true
   def event_to_msg(%Event.Key{char: char}, _state) when char in ~w(1 2 3 4 5) do
@@ -130,14 +145,14 @@ defmodule Worth.UI.Root do
   end
 
   def update({:tabs_event, %Event.Key{key: :left}}, state) do
-    tabs = [:workspace, :tools, :skills, :status, :logs]
+    tabs = [:workspace, :tools, :skills, :status, :usage, :logs]
     current_idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
     new_idx = if current_idx > 0, do: current_idx - 1, else: length(tabs) - 1
     %{state | selected_tab: Enum.at(tabs, new_idx)}
   end
 
   def update({:tabs_event, %Event.Key{key: :right}}, state) do
-    tabs = [:workspace, :tools, :skills, :status, :logs]
+    tabs = [:workspace, :tools, :skills, :status, :usage, :logs]
     current_idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
     new_idx = rem(current_idx + 1, length(tabs))
     %{state | selected_tab: Enum.at(tabs, new_idx)}
@@ -149,10 +164,6 @@ defmodule Worth.UI.Root do
 
   def update({:tabs_event, %Event.Key{key: :end}}, state) do
     %{state | selected_tab: :logs}
-  end
-
-  def update({:tabs_event, %Event.Key{key: :enter}}, state) do
-    {state, []}
   end
 
   def update(:cursor_left, state),
@@ -234,21 +245,27 @@ defmodule Worth.UI.Root do
 
   @impl true
   def view(state) do
+    header = Header.render(state)
+    header_sep = Header.separator(state.width)
     chat = Chat.render(state)
+    input_area = Input.render(state)
+
+    body_height = max(1, state.height - 4)
 
     body =
       if state.sidebar_visible do
         {chat_w, sidebar_w} = split_widths(state.width)
 
-        stack(:horizontal, [
-          box([chat], width: chat_w),
-          Sidebar.render(state, sidebar_width: sidebar_w)
-        ])
+        chat_pane = box([chat], width: chat_w - 1, height: body_height)
+        vdiv = Sidebar.vertical_divider(body_height)
+        sidebar_content = box([Sidebar.render(state, sidebar_width: sidebar_w)], width: sidebar_w, height: body_height)
+
+        stack(:horizontal, [chat_pane, vdiv, sidebar_content])
       else
-        chat
+        box([chat], height: body_height)
       end
 
-    stack(:vertical, [Header.render(state), body, Input.render(state)])
+    stack(:vertical, [header, header_sep, body, input_area])
   end
 
   # Sidebar takes ~1/3 of the screen, clamped to a comfortable readable

@@ -7,7 +7,8 @@ defmodule Worth.CLI do
           mode: :string,
           help: :boolean,
           version: :boolean,
-          init: :string
+          init: :string,
+          setup: :boolean
         ],
         aliases: [
           w: :workspace,
@@ -27,12 +28,19 @@ defmodule Worth.CLI do
       opts[:init] ->
         init_workspace(opts[:init])
 
+      opts[:setup] ->
+        Worth.Config.Setup.run_wizard!()
+
       true ->
         start_worth(opts)
     end
   end
 
   defp start_worth(opts) do
+    # Must run before install_tui_logger/0 — that handler removes the
+    # default console and the wizard would have nowhere to print.
+    Worth.Config.Setup.maybe_run_first_run!()
+
     workspace = opts[:workspace] || "personal"
     mode = parse_mode(opts[:mode] || "code")
     workspace_path = Path.expand("~/.worth/workspaces/#{workspace}")
@@ -103,6 +111,7 @@ defmodule Worth.CLI do
       -w, --workspace <name>   Open a specific workspace (default: personal)
       -m, --mode <mode>        Execution mode: code | research | planned | turn_by_turn
       --init <name>            Create a new workspace and exit
+      --setup                  Run the setup wizard and exit
       -h, --help               Show this help message
       -v, --version            Show version
 

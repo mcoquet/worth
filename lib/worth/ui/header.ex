@@ -1,40 +1,59 @@
 defmodule Worth.UI.Header do
   @moduledoc """
-  Top bar: status indicator, workspace name, current mode, cost, turn count.
+  Top bar with status indicator, workspace, mode badge, cost, and model.
 
-  Enhanced with status indicators inspired by amux/lazygit.
+  Renders as a single styled line:
+  `○ worth │ workspace │ [code] │ t5 │ $0.0012 (model)`
   """
 
   import TermUI.Component.Helpers
+  alias TermUI.Renderer.Style
   alias Worth.UI.Theme
+
+  @separator "│"
 
   def render(state) do
     indicator = status_indicator(state.status)
-    mode_badge = mode_badge(state.mode)
+    mode_badge = "[#{state.mode}]"
     cost = cost_display(state.cost)
-    turns = turn_display(state.turn)
+    turns = "t#{state.turn}"
     model = model_display(state)
 
-    text(
-      "#{indicator} worth | #{state.workspace} | #{mode_badge} | #{turns} | #{cost} #{model}",
-      Theme.style_for(:header)
-    )
+    segments =
+      [
+        {"#{indicator} worth", Theme.style_for(:header)},
+        {state.workspace, Style.new(fg: :white)},
+        {mode_badge, Theme.badge_style()},
+        {turns, Style.new(fg: :bright_black)},
+        {cost, Style.new(fg: :yellow)},
+        {model, Style.new(fg: :bright_black)}
+      ]
+      |> Enum.reject(fn {text, _} -> text == "" end)
+
+    line =
+      segments
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.join(" #{@separator} ")
+
+    style =
+      segments
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reduce(Style.new(), &Style.merge(&2, &1))
+
+    text(line, style)
+  end
+
+  def separator(width) do
+    text(String.duplicate("─", width), Style.new(fg: :bright_black))
   end
 
   defp status_indicator(:running), do: "●"
   defp status_indicator(:idle), do: "○"
   defp status_indicator(:error), do: "×"
 
-  defp mode_badge(mode) when is_atom(mode) do
-    "[#{Atom.to_string(mode)}]"
-  end
-
   defp cost_display(cost) when is_float(cost) do
     "$#{:erlang.float_to_binary(cost, [{:decimals, 4}])}"
-  end
-
-  defp turn_display(turn) when is_integer(turn) do
-    "t#{turn}"
   end
 
   defp model_display(state) do

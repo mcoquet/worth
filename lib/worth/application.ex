@@ -32,6 +32,17 @@ defmodule Worth.Application do
           Worth.Memory.Embeddings.StaleCheck.run()
         end)
 
+        # AgentEx.LLM.Catalog runs its first refresh ~100ms after agent_ex
+        # boots — that races Worth.Config.start_link/1, which is the only
+        # thing that exports user-saved provider keys (e.g. OPENROUTER_API_KEY)
+        # into the process env. The refresh wins the race, every provider
+        # resolves as :no_creds, the static fallback is persisted to
+        # ~/.worth/catalog.json, and the next scheduled refresh isn't for
+        # 10 minutes. Force one more refresh now that Worth.Config is up.
+        Task.Supervisor.start_child(Worth.SkillInit, fn ->
+          AgentEx.LLM.Catalog.refresh()
+        end)
+
         {:ok, pid}
 
       error ->

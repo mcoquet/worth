@@ -30,9 +30,11 @@ defmodule Worth.MixProject do
 
   defp deps do
     [
+      # {:mneme, path: "../mneme"},
+      {:mneme, github: "kittyfromouterspace/mneme"},
+      # {:agent_ex, path: "../agent_ex"},
+      {:agent_ex, github: "kittyfromouterspace/agent_ex"},
       {:term_ui, "~> 0.2.0"},
-      {:agent_ex, path: "../agent_ex"},
-      {:mneme, path: "../mneme", override: true},
       {:hermes_mcp, "~> 0.14.1"},
       {:phoenix_pubsub, "~> 2.1"},
       {:ash, "~> 3.23"},

@@ -54,6 +54,8 @@ defmodule Worth.UI.Commands do
       ["/catalog", "refresh"] -> {:command, {:catalog, :refresh}}
       ["/usage"] -> {:command, :usage}
       ["/usage", "refresh"] -> {:command, {:usage, :refresh}}
+      ["/setup"] -> {:command, {:setup, :show}}
+      ["/setup", rest] -> parse_setup(rest)
       ["/skill" | _] -> {:command, {:skill, :help}}
       ["/" <> _ = cmd | _] -> {:command, {:unknown, cmd}}
       _ -> :message
@@ -70,6 +72,15 @@ defmodule Worth.UI.Commands do
     case Integer.parse(version) do
       {v, ""} -> {:command, {:skill, {:rollback, name, v}}}
       _ -> {:command, {:unknown, "/skill rollback #{name} #{version}"}}
+    end
+  end
+
+  defp parse_setup(rest) do
+    case String.split(rest, " ", parts: 2) do
+      ["openrouter", key] -> {:command, {:setup, {:openrouter, key}}}
+      ["embedding", model] -> {:command, {:setup, {:embedding, model}}}
+      ["show"] -> {:command, {:setup, :show}}
+      _ -> {:command, {:setup, :help}}
     end
   end
 
@@ -455,6 +466,34 @@ defmodule Worth.UI.Commands do
     {append_system(state, msg), []}
   end
 
+  def handle({:command, {:setup, :show}}, _text, state) do
+    {append_system(state, setup_status_text()), []}
+  end
+
+  def handle({:command, {:setup, :help}}, _text, state) do
+    msg =
+      "Setup commands:\n" <>
+        "  /setup                 Show current setup status\n" <>
+        "  /setup openrouter <k>  Save OpenRouter API key (plain text, 0600)\n" <>
+        "  /setup embedding <m>   Set embedding model id"
+
+    {append_system(state, msg), []}
+  end
+
+  def handle({:command, {:setup, {:openrouter, key}}}, _text, state) do
+    case Worth.Config.Setup.set_openrouter_key(key) do
+      :ok -> {append_system(state, "OpenRouter key saved to #{Worth.Config.Store.path()}."), []}
+      {:error, :empty_key} -> {append_error(state, "OpenRouter key cannot be empty."), []}
+    end
+  end
+
+  def handle({:command, {:setup, {:embedding, model}}}, _text, state) do
+    case Worth.Config.Setup.set_embedding_model(model) do
+      :ok -> {append_system(state, "Embedding model set to #{model}."), []}
+      {:error, :empty_model} -> {append_error(state, "Embedding model cannot be empty."), []}
+    end
+  end
+
   def handle({:command, {:unknown, cmd}}, _text, state) do
     {append_system(state, "Unknown command: #{cmd}. Type /help for available commands."), []}
   end
@@ -495,6 +534,21 @@ defmodule Worth.UI.Commands do
     %{state | messages: state.messages ++ [{:error, msg}]}
   end
 
+  defp setup_status_text do
+    key =
+      case Worth.Config.Setup.openrouter_key() do
+        nil -> "(not set)"
+        k -> "#{String.slice(k, 0, 8)}… (#{String.length(k)} chars)"
+      end
+
+    model = Worth.Config.Setup.embedding_model() || "(not set)"
+
+    "Setup status:\n" <>
+      "  config file:     #{Worth.Config.Store.path()}\n" <>
+      "  openrouter key:  #{key}\n" <>
+      "  embedding model: #{model}"
+  end
+
   def help_text do
     """
     Commands:
@@ -533,6 +587,9 @@ defmodule Worth.UI.Commands do
       /catalog refresh     Refresh model catalog from providers
       /usage               Show provider quota and session cost
       /usage refresh       Refresh usage snapshots
+      /setup               Show setup status
+      /setup openrouter <k> Save OpenRouter API key
+      /setup embedding <m> Set embedding model id
       Tab                  Toggle sidebar
       Up/Down              Command history
     """

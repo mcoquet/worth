@@ -5,5 +5,4 @@
 .idea/
 *.iml
 .DS_Store
-.openrouter
-.grok
+/debug/

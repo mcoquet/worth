@@ -26,14 +26,13 @@ defmodule Worth.UI.Input do
   end
 
   defp render_keyhints() do
-    hints =
+    hints_str =
       @keyhints
       |> Enum.map(fn {key, action} ->
-        text("[#{key}]", Theme.keyhint_key_style()) <>
-          text(" #{action} ", Theme.keyhint_style())
+        "[#{key}] #{action}"
       end)
-      |> Enum.intersperse(" ")
+      |> Enum.join("  ")
 
-    text(hints, Theme.keyhint_style())
+    text(hints_str, Theme.keyhint_style())
   end
 end

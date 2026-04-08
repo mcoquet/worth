@@ -1,5 +1,13 @@
 import Config
 
+config :agent_ex,
+  providers: [
+    AgentEx.LLM.Provider.OpenRouter,
+    AgentEx.LLM.Provider.Anthropic,
+    AgentEx.LLM.Provider.OpenAI
+  ],
+  catalog: [persist_path: "~/.worth/catalog.json"]
+
 config :worth,
   ecto_repos: [Worth.Repo],
   llm: [

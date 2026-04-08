@@ -1,72 +1,406 @@
 # Worth
 
-A terminal-based AI assistant built on Elixir/BEAM. One brain, multiple workspaces, persistent memory, self-learning skills, and MCP integration.
+A terminal-based AI assistant built on Elixir/BEAM. Worth provides a modular, embeddable agent system with persistent memory, self-learning skills, and MCP integration.
 
-## Features
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![Elixir](https://img.shields.io/badge/Elixir-1.19+-grey.svg)](https://elixir-lang.org)
+[![BEAM](https://img.shields.io/badge/BEAM-OTP-26+-grey.svg)](https://www.erlang.org)
 
-- **Terminal-native TUI** -- Elm Architecture UI with streaming responses, tool trace rendering, sidebar, and command history
-- **Unified global memory** -- Facts, preferences, and patterns persist across sessions and workspaces via vector search + knowledge graph (Mneme)
-- **Self-learning skills** -- Agentskills.io-compatible skill system that creates, refines, and promotes skills based on usage
-- **MCP client** -- Connect to any MCP server (filesystem, GitHub, Postgres, Slack, etc.) and use its tools
-- **MCP server** -- Expose worth's brain, memory, and skills to other MCP clients (Claude Desktop, VS Code, Cursor)
-- **JourneyKits** -- Search, install, and publish packaged AI workflows
-- **Multi-provider LLM** -- Anthropic, OpenAI, OpenRouter with primary/lightweight model routing
-- **Multiple workspaces** -- Switch between projects with scoped context while sharing global knowledge
-- **Multiple modes** -- Code (agentic), Research (conversational), Planned, Turn-by-turn
+## Why Elixir/BEAM?
+
+Worth runs on the BEAM virtual machine—the same platform powering WhatsApp, Discord, and Heroku. BEAM provides:
+
+- **Process isolation** — Each MCP server, tool execution, and agent turn runs in its own lightweight process. Failures are contained.
+- **Supervision trees** — Built-in fault tolerance. A crashed MCP connection restarts without killing the agent.
+- **Hot code upgrades** — Reload modules without restarting. Worth can evolve while running.
+- **Real-time concurrency** — Streaming LLM responses, tool execution, and UI updates happen concurrently without callback hell.
+
+Worth is a single BEAM node. No containers, no VMs, no web server required.
+
+## Quick Start
+
+### As a Library
+
+Add Worth to your `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:worth, "~> 0.1.0"},
+    {:agent_ex, path: "../agent_ex"},  # Local dependency
+    {:mneme, path: "../mneme"}          # Local dependency
+  ]
+end
+```
+
+### As a Standalone Application
+
+```bash
+# Clone and setup
+git clone https://github.com/kittyfromouterspace/worth.git
+cd worth
+mix setup
+
+# Configure API keys
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Run the TUI
+mix run --no-halt
+```
+
+## Core Concepts
+
+### The Brain
+
+`Worth.Brain` is a GenServer that orchestrates the agent loop. It owns the session state and delegates to specialized subsystems:
+
+```elixir
+# Start a session with custom callbacks
+{:ok, brain} = Worth.Brain.start_link(
+  workspace: "my-project",
+  mode: :code,
+  callbacks: custom_callbacks
+)
+
+# Send a message
+{:ok, response} = Worth.Brain.send_message(brain, "Write a test for auth.ex")
+```
+
+The brain exposes these integration points:
+- `send_message/2` — Send user input, get agent response
+- `approve_tool/2` — Approve a pending tool call
+- `switch_workspace/2` — Change context
+- `switch_mode/2` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
+
+### Memory System
+
+Worth uses [Mneme](https://github.com/kittyfromouterspace/mneme) for vector search + knowledge graph:
+
+```elixir
+# Store a fact (global, not per-workspace)
+Worth.Memory.Manager.write(%{
+  content: "User prefers conventional commits",
+  entry_type: "preference",
+  metadata: %{workspace: "my-project"}
+})
+
+# Search global knowledge
+{:ok, results} = Worth.Memory.Manager.search("commit conventions")
+```
+
+Memory is **global** by design. All workspaces share one knowledge store. Workspaces provide context overlays (project identity, local skills), not memory silos.
+
+### Skills System
+
+Skills follow the [agentskills.io](https://agentskills.io/) standard and teach the agent *how* to use tools:
+
+```elixir
+# List available skills
+skills = Worth.Skill.Service.list()
+
+# Read skill content
+{:ok, skill} = Worth.Skill.Service.read("git-workflow")
+
+# Create a new skill
+Worth.Skill.Service.create(%{
+  name: "my-skill",
+  description: "Custom skill instructions",
+  body: "# Instructions..."
+})
+```
+
+Skills have trust levels: `core` (shipped), `installed` (user-added), `learned` (agent-created). The system tracks success rates and auto-refines underperforming skills.
+
+### MCP Integration
+
+Worth can connect to external MCP servers and expose its own capabilities as an MCP server.
+
+**As an MCP Client:**
+
+```elixir
+# Configure in ~/.worth/config.exs
+%{
+  mcp: %{
+    servers: %{
+      github: %{
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        env: %{"GITHUB_TOKEN" => {:env, "GITHUB_TOKEN"}},
+        autoconnect: true
+      }
+    }
+  }
+}
+```
+
+**As an MCP Server:**
+
+```bash
+# Run worth as an MCP server
+mix worth serve
+```
+
+Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_workspace_status`
+
+## Integration APIs
+
+### Embedding the Agent
+
+```elixir
+# Start with custom configuration
+config = %{
+  llm: %{
+    provider: :anthropic,
+    model: "claude-sonnet-4-20250514",
+    api_key: {:env, "ANTHROPIC_API_KEY"}
+  },
+  cost_limit: 10.0,
+  workspace: "my-project"
+}
+
+{:ok, brain} = Worth.Brain.start_link(config: config)
+
+# Stream responses
+Worth.Brain.send_message(brain, "Refactor user.ex", fn event ->
+  case event do
+    {:text_chunk, text} -> IO.puts(text)
+    {:tool_call, tool} -> IO.inspect(tool, label: "Tool call")
+    {:done, _} -> IO.puts("\n--- Done ---")
+  end
+end)
+```
+
+### Custom Tools
+
+Register tools that the agent can call:
+
+```elixir
+defmodule MyApp.Tools.Custom do
+  @behaviour AgentEx.Tools
+
+  def name, do: "my_custom_tool"
+  def description, do: "Does something useful"
+
+  def schema do
+    %{
+      name: "my_custom_tool",
+      description: "Does something useful",
+      inputSchema: %{
+        type: "object",
+        properties: %{
+          input: %{type: "string", description: "Input value"}
+        },
+        required: ["input"]
+      }
+    }
+  end
+
+  def execute(args, _ctx) do
+    {:ok, %{result: "processed: #{args.input}"}}
+  end
+end
+
+# Register it
+AgentEx.Tools.register_extension(MyApp.Tools.Custom)
+```
+
+### Custom LLM Adapter
+
+Worth supports Anthropic, OpenAI, and OpenRouter. To add a new provider:
+
+```elixir
+defmodule MyApp.LLM.MyProvider do
+  @behaviour Worth.LLM.Adapter
+
+  @impl true
+  def chat(messages, config) do
+    # Call your LLM API
+    # Return normalized response:
+    %{
+      "content" => [...],
+      "stop_reason" => "end_turn",
+      "usage" => %{input_tokens: 100, output_tokens: 50},
+      "cost" => 0.003
+    }
+  end
+end
+
+# Configure in ~/.worth/config.exs
+%{
+  llm: %{
+    default_provider: :my_provider,
+    providers: %{
+      my_provider: %{
+        adapter: MyApp.LLM.MyProvider,
+        api_key: {:env, "MY_PROVIDER_KEY"},
+        default_model: "my-model"
+      }
+    }
+  }
+}
+```
+
+### Extending the Brain
+
+Provide custom callbacks to modify agent behavior:
+
+```elixir
+callbacks = %{
+  # Custom LLM call
+  llm_chat: fn params ->
+    MyApp.LLM.call(params)
+  end,
+
+  # Custom memory lookup
+  knowledge_search: fn query, opts ->
+    MyApp.Memory.search(query, opts)
+  end,
+
+  # Custom tool resolution
+  get_tool_schema: fn name ->
+    MyApp.Tools.resolve(name)
+  end,
+
+  # Before/after each turn
+  on_turn_start: fn ctx ->
+    Logger.info("Starting turn in #{ctx.workspace}")
+    ctx
+  end,
+
+  on_turn_end: fn ctx, result ->
+    Logger.info("Turn complete, cost: #{result.cost}")
+    :ok
+  end
+}
+
+Worth.Brain.start_link(callbacks: callbacks)
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Worth (BEAM Node)                      │
+│                                                          │
+│  ┌──────────────┐    ┌──────────────┐                   │
+│  │  TermUI       │    │  Brain       │                   │
+│  │  (Elm Arch)   │◄──►│  (GenServer) │                   │
+│  │              │    │              │                     │
+│  │  - Input     │    │  - AgentEx   │                    │
+│  │  - Render    │    │  - Mneme     │                    │
+│  │  - Events    │    │  - Skills    │                    │
+│  └──────────────┘    │  - MCP       │                    │
+│                      └──────┬───────┘                    │
+│                             │                            │
+│                      ┌──────▼───────┐                    │
+│                      │  AgentEx     │                    │
+│                      │  Loop Engine │                    │
+│                      └──────┬───────┘                    │
+│                             │                            │
+│        ┌─────────────┬──────┼──────┬─────────────┐      │
+│        │             │      │      │             │      │
+│ ┌──────▼──┐  ┌──────▼──┐  ┌──▼──┐  ┌──────▼──┐  ┌─▼────┐│
+│ │ Mneme   │  │ File    │  │Tool │  │ Skills  │  │ MCP  ││
+│ │ Memory  │  │ Tools   │  │Index│  │ System  │  │Servers│
+│ └──────┬──┘  └─────────┘  └─────┘  └─────────┘  └───────┘│
+│        │                                              │
+│ ┌──────▼──┐                                          │
+│ │PostgreSQL│                                         │
+│ │+ pgvector│                                         │
+│ └─────────┘                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Modules
+
+| Module | Responsibility |
+|--------|----------------|
+| `Worth.Brain` | Central GenServer, coordinates agent loop |
+| `Worth.LLM` | Provider abstraction (Anthropic, OpenAI, OpenRouter) |
+| `Worth.Memory.Manager` | Global memory orchestration |
+| `Worth.Skill.Service` | Skill CRUD, lifecycle management |
+| `Worth.Mcp.Broker` | DynamicSupervisor for MCP connections |
+| `Worth.Mcp.Gateway` | Lazy tool discovery and execution |
+| `Worth.Tools` | Builtin tool implementations |
+| `Worth.UI.Root` | TermUI Elm Architecture root |
+
+### Supervision Tree
+
+```
+Worth.Application
+├── Worth.Repo (Ecto/Postgres + pgvector)
+├── Worth.Config (Agent)
+├── Phoenix.PubSub + Worth.Registry
+├── Worth.TaskSupervisor
+├── Worth.Telemetry
+├── Worth.Mcp.Broker (DynamicSupervisor)
+├── Worth.Mcp.ConnectionMonitor
+├── Worth.Brain.Supervisor
+│   └── Worth.Brain (GenServer)
+└── Worth.UI (separate process tree)
+```
 
 ## Prerequisites
 
-- Elixir 1.19+
-- PostgreSQL 14+ with pgvector extension
-- An LLM API key (Anthropic, OpenAI, or OpenRouter)
+- **Elixir** 1.19+
+- **PostgreSQL** 14+ with pgvector extension
+- **LLM API key** (Anthropic, OpenAI, or OpenRouter)
 
-## Setup
-
-```bash
-# Clone
-git clone <repo-url> worth && cd worth
-
-# Install dependencies
-mix deps.get
-
-# Setup database (creates + migrates)
-mix setup
-
-# Set your API key
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-### Database
-
-Worth uses PostgreSQL with the pgvector extension for vector similarity search. Create the database:
+### Database Setup
 
 ```bash
-# Install pgvector if you don't have it (macOS)
-brew install pgvector
-
-# Create database and run migrations
+# Create database
 mix ecto.create
+
+# Run migrations
 mix ecto.migrate
 ```
 
-### Configuration
+Or with Docker:
 
-Worth reads config from `~/.worth/config.exs` (created automatically on first run). You can customize:
+```bash
+docker run -d \
+  --name worth-db \
+  -e POSTGRES_PASSWORD=worth \
+  -e POSTGRES_DB=worth \
+  -v pgdata:/var/lib/postgresql/data \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+```
+
+## Configuration
+
+Worth reads from `~/.worth/config.exs` (auto-created on first run):
 
 ```elixir
-# ~/.worth/config.exs
 %{
+  # LLM Configuration
   llm: %{
     default_provider: :anthropic,
+    cost_limit: 5.0,  # Max dollars per session
     providers: %{
       anthropic: %{
         api_key: {:env, "ANTHROPIC_API_KEY"},
         default_model: "claude-sonnet-4-20250514"
+      },
+      openai: %{
+        api_key: {:env, "OPENAI_API_KEY"},
+        default_model: "gpt-4o"
+      },
+      openrouter: %{
+        api_key: {:env, "OPENROUTER_API_KEY"},
+        default_model: "anthropic/claude-3.5-sonnet"
       }
     }
   },
-  ui: %{theme: :dark},              # :dark | :light | :minimal
-  cost_limit: 5.0,                   # max dollars per session
+
+  # UI Theme
+  ui: %{
+    theme: :dark  # :dark | :light | :minimal
+  },
+
+  # MCP Servers
   mcp: %{
     servers: %{
       filesystem: %{
@@ -80,257 +414,106 @@ Worth reads config from `~/.worth/config.exs` (created automatically on first ru
 }
 ```
 
-## Starting Worth
+## Development
 
 ```bash
-# Default workspace, code mode
+# Install dependencies
+mix deps.get
+
+# Setup database
+mix setup
+
+# Run tests
+mix test
+
+# Linting
+mix credo
+
+# Type checking
+mix dialyzer
+
+# Run the TUI
 mix run --no-halt
+```
 
-# Specific workspace
-mix run --no-halt -- -w my-project
+### Running Tests
 
-# Research mode
-mix run --no-halt -- -m research
+```bash
+# Full test suite (creates test DB automatically)
+mix test
 
-# Create a workspace and exit
-mix run --no-halt -- --init my-project
+# Single file
+mix test test/worth/brain_test.exs
 
-# Planned mode (agent shows plan before executing)
-mix run --no-halt -- -m planned
+# Single test
+mix test test/worth/brain_test.exs:42
 ```
 
 ## Slash Commands
 
-Inside worth's TUI, type `/` to access commands:
+When running the TUI, these commands are available:
 
 | Command | Description |
 |---------|-------------|
 | `/help` | Show all commands |
-| `/quit` | Exit worth |
-| `/clear` | Clear chat history |
-| `/cost` | Show session cost and turn count |
-| `/status` | Show mode, workspace, cost, session ID |
-| `/mode <mode>` | Switch mode: `code` / `research` / `planned` / `turn_by_turn` |
-| `/workspace list` | List all workspaces |
-| `/workspace new <name>` | Create a workspace |
+| `/mode <mode>` | Switch mode: code, research, planned, turn_by_turn |
 | `/workspace switch <name>` | Switch to a workspace |
 | `/memory query <query>` | Search global memory |
-| `/memory note <text>` | Add a note to working memory |
-| `/memory recent` | Show recent memories |
-| `/skill list` | List all skills (core, installed, learned) |
-| `/skill read <name>` | Read a skill's full content |
-| `/skill remove <name>` | Remove a skill |
-| `/skill history <name>` | Show skill version history |
-| `/skill rollback <name> <v>` | Roll back a skill to a previous version |
-| `/skill refine <name>` | Trigger manual skill refinement |
-| `/session list` | List past sessions |
-| `/session resume <id>` | Resume a previous session |
+| `/skill list` | List all skills |
+| `/session resume <id>` | Resume a past session |
 | `/mcp list` | List connected MCP servers |
-| `/mcp connect <name>` | Connect to a configured MCP server |
-| `/mcp disconnect <name>` | Disconnect from a server |
-| `/mcp tools <name>` | List tools from a server |
-| `/kit search <query>` | Search JourneyKits for workflows |
-| `/kit install <owner/slug>` | Install a kit (skills + files) |
-| `/kit list` | List installed kits |
-| `/kit info <owner/slug>` | Show kit details |
-
-### Keyboard
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Toggle sidebar |
-| `Up/Down` | Navigate command history |
-| `Enter` | Submit message |
-| `Backspace` | Delete character |
 
 ## Workspaces
 
-A workspace is a project directory containing identity files and settings:
+A workspace is a project directory with identity files:
 
 ```
-my-project/                  # Workspace root
-├── IDENTITY.md              # Project description (read by agent)
+my-project/
+├── IDENTITY.md              # Project description (read each turn)
 ├── AGENTS.md                # Agent-specific instructions
 └── .worth/
     ├── skills.json          # Active skills for this workspace
     └── mcp.json             # MCP server overrides
 ```
 
-The agent reads `IDENTITY.md` and `AGENTS.md` on each turn to understand the project context. You can put conventions, constraints, and preferences there.
-
-## Memory
-
-Worth has a single global knowledge store powered by Mneme (vector search + knowledge graph):
-
-- **Automatic fact extraction** -- The agent extracts facts from responses and tool results
-- **Working memory** -- Short-term notes per workspace, flushed to global memory on workspace switch
-- **Vector search** -- Queries find semantically similar knowledge using embeddings
-- **Confidence decay** -- Knowledge fades over time unless reinforced by usage
-- **Outcome feedback** -- Successful agent turns reinforce relevant memories
-
-Memory is shared across all workspaces. A pattern learned in one project is available everywhere.
-
-## Skills
-
-Skills teach the agent *how* to use tools. They follow the agentskills.io standard:
-
-```
-SKILL.md
----
-name: my-skill
-description: What this skill does
-trust_level: core | installed | learned
-loading: always | on_demand
----
-
-# Instructions for the agent...
-```
-
-### Skill Lifecycle
-
-1. **Core** -- Bundled with worth (agent-tools, human-agency, tool-discovery, skill-lifecycle, self-improvement)
-2. **Installed** -- Installed from kits or manually by the user
-3. **Learned** -- Created by the agent from experience or failure recovery
-4. **Promoted** -- Learned skills that meet success criteria get promoted to installed
-
-The agent automatically:
-- Tracks skill success rates
-- Refines failing skills (with LLM assistance)
-- Runs proactive reviews every 20 uses
-- Saves version history for rollback
-
-### Bundled Core Skills
-
-| Skill | Description |
-|-------|-------------|
-| `agent-tools` | File operations, bash commands, search |
-| `human-agency` | Knowing when to ask for human input |
-| `tool-discovery` | Finding and using available tools |
-| `skill-lifecycle` | Creating and managing skills |
-| `self-improvement` | Meta-skill for self-reflection |
-
-## MCP Integration
-
-### Connecting to MCP Servers
-
-Add servers to `~/.worth/config.exs`:
-
-```elixir
-%{
-  mcp: %{
-    servers: %{
-      github: %{
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-github"],
-        env: %{"GITHUB_PERSONAL_ACCESS_TOKEN" => {:env, "GITHUB_TOKEN"}},
-        autoconnect: true
-      },
-      postgres: %{
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
-        autoconnect: false
-      }
-    }
-  }
-}
-```
-
-Or add workspace-specific servers in `.worth/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "my-api": {
-      "type": "streamable_http",
-      "url": "http://localhost:8000",
-      "mcp_path": "/mcp"
-    }
-  }
-}
-```
-
-Servers with `autoconnect: true` connect on startup. Use `/mcp connect <name>` for others.
-
-MCP tools are namespaced as `server:tool_name` to prevent collisions.
-
-### Worth as MCP Server
-
-Other MCP clients can connect to worth and use its capabilities:
-
-```bash
-# Run worth as an MCP server on stdio
-worth serve
-```
-
-Exposed tools:
-- `worth_chat` -- Send a message to the agent
-- `worth_memory_query` -- Search the knowledge store
-- `worth_memory_write` -- Store a fact
-- `worth_skill_list` -- List all skills
-- `worth_skill_read` -- Read skill content
-- `worth_workspace_status` -- Current workspace info
-
-## JourneyKits
-
-Search and install packaged workflows:
-
-```
-/kit search phoenix deploy
-/kit install worth-community/phoenix-deploy-flyio
-/kit list
-```
-
-Installing a kit extracts bundled skills into `~/.worth/skills/` and writes source files to the current workspace.
-
-## Development
-
-```bash
-# Run tests (120 tests)
-mix test
-
-# Compile
-mix compile
-
-# Run linting
-mix credo
-
-# Type checking
-mix dialyzer
-```
-
-## Architecture
-
-```
-Worth Application
-├── Worth.Brain (GenServer)        # Central coordinator
-│   ├── AgentEx.run/1              # Agent loop engine
-│   ├── Worth.Memory.Manager       # Global memory orchestration
-│   ├── Worth.Skill.Service        # Skill CRUD
-│   └── Worth.Mcp.Gateway          # MCP tool dispatch
-├── Worth.UI.Root (TermUI)         # Elm Architecture TUI
-├── Worth.Mcp.Broker (DynamicSup)  # MCP server connections
-├── Worth.Mcp.ConnectionMonitor    # Health checks + reconnect
-├── Worth.Repo (Ecto)              # PostgreSQL + pgvector
-└── Worth.Config (Agent)           # Runtime config
-```
-
 ## Documentation
 
 Full design docs in `docs/`:
 
-| Doc | Description |
-|-----|-------------|
+| Document | Description |
+|----------|-------------|
 | [vision.md](docs/vision.md) | What worth is and why it exists |
-| [architecture.md](docs/architecture.md) | System architecture and dependency graph |
-| [memory.md](docs/memory.md) | Unified memory: working, knowledge, vector search |
+| [architecture.md](docs/architecture.md) | System architecture and dependencies |
+| [brain.md](docs/brain.md) | Brain GenServer and callback system |
+| [memory.md](docs/memory.md) | Global memory: vector search + knowledge graph |
 | [skills.md](docs/skills.md) | Skill system, trust levels, self-learning |
 | [mcp.md](docs/mcp.md) | MCP client/server integration |
-| [brain.md](docs/brain.md) | Brain GenServer and callback system |
-| [kits.md](docs/kits.md) | JourneyKits integration |
-| [implementation-strategy.md](docs/implementation-strategy.md) | 7-phase implementation plan |
+| [tools.md](docs/tools.md) | Available tools and extensions |
+
+## Dependencies
+
+Worth depends on two local libraries that must exist as siblings:
+
+- **`../agent_ex`** — Agent loop engine with stages, profiles, and tool system
+- **`../mneme`** — Vector search + knowledge graph for memory
+
+Other key dependencies:
+
+| Library | Purpose |
+|---------|---------|
+| `term_ui` | Elm Architecture TUI framework |
+| `hermes_mcp` | MCP client/server (JSON-RPC 2.0) |
+| `ash` + `ash_postgres` | Domain modeling and persistence |
+| `phoenix_pubsub` | Event broadcasting |
+| `req` | HTTP client for LLM APIs |
 
 ## License
 
-MIT
+BSD-3-Clause. See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions welcome. Please ensure:
+- `mix credo` passes (linting)
+- `mix dialyzer` passes (types)
+- Tests pass (`mix test`)

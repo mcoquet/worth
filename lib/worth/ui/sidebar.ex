@@ -8,22 +8,33 @@ defmodule Worth.UI.Sidebar do
   """
 
   import TermUI.Component.Helpers
+  alias TermUI.Renderer.Style
 
   @tabs [:workspace, :tools, :skills, :status, :usage, :logs]
   @log_tail 50
 
-  def render(state, opts \\ []) do
-    width = Keyword.get(opts, :sidebar_width, 30)
+  def render(state, _opts \\ []) do
     active = Map.get(state, :selected_tab, :status)
-    header = box([text("[#{tab_dots(active)}]", TermUI.Renderer.Style.new(fg: :cyan))], width: width)
 
-    content = box(tab_content(state, active), width: width, style: TermUI.Renderer.Style.new(bg: :black))
+    tab_header = text(" #{tab_dots(active)}", Style.new(fg: :cyan))
+    divider = horizontal_rule()
 
-    stack(:vertical, [header, content])
+    content = tab_content(state, active)
+
+    stack(:vertical, [tab_header, divider | content])
+  end
+
+  def vertical_divider(height) do
+    lines = for _ <- 1..height, do: "│"
+    text(Enum.join(lines, "\n"), Style.new(fg: :bright_black))
+  end
+
+  def horizontal_rule do
+    text(String.duplicate("─", 60), Style.new(fg: :bright_black))
   end
 
   defp tab_dots(active) do
-    Enum.map_join(@tabs, "", fn t -> if t == active, do: "●", else: "○" end)
+    Enum.map_join(@tabs, " ", fn t -> if t == active, do: "●", else: "○" end)
   end
 
   defp tab_content(state, :workspace), do: workspace_tab(state)
@@ -35,16 +46,16 @@ defmodule Worth.UI.Sidebar do
 
   def workspace_tab(_state) do
     ws_list = Worth.Workspace.Service.list()
-    lines = if ws_list == [], do: ["(none)"], else: Enum.map(ws_list, &"  #{&1}")
-    [text("Workspace", TermUI.Renderer.Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
+    lines = if ws_list == [], do: ["  (none)"], else: Enum.map(ws_list, &"  #{&1}")
+    [text("Workspace", Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
   end
 
   def tools_tab(_state) do
     tools = ~w(read_file write_file edit_file bash list_files memory_query skill_list)
 
     [
-      text("Tools", TermUI.Renderer.Style.new(attrs: [:bold]))
-      | Enum.map(tools, &text("  #{&1}", TermUI.Renderer.Style.new(fg: :bright_black)))
+      text("Tools", Style.new(attrs: [:bold]))
+      | Enum.map(tools, &text("  #{&1}", Style.new(fg: :bright_black)))
     ]
   end
 
@@ -53,12 +64,12 @@ defmodule Worth.UI.Sidebar do
 
     if skills == [] do
       [
-        text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])),
-        text("  (none)", TermUI.Renderer.Style.new(fg: :bright_black))
+        text("Skills", Style.new(attrs: [:bold])),
+        text("  (none)", Style.new(fg: :bright_black))
       ]
     else
       lines = Enum.map(skills, fn s -> "  #{s.name} [#{s.trust_level}]" end)
-      [text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
+      [text("Skills", Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
     end
   end
 
@@ -69,17 +80,17 @@ defmodule Worth.UI.Sidebar do
     catalog_info = AgentEx.LLM.Catalog.info()
 
     model_lines = [
-      text("Status", TermUI.Renderer.Style.new(attrs: [:bold])),
+      text("Status", Style.new(attrs: [:bold])),
       text("  Mode:  #{state.mode}"),
       text("  Cost:  $#{Float.round(state.cost, 4)}"),
       text("  Turns: #{state.turn}"),
-      text("  Models (#{catalog_info.model_count} in catalog)", TermUI.Renderer.Style.new(attrs: [:bold])),
-      text("    primary:     #{model_line(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
-      text("      via #{source_line(primary)} #{model_meta(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
-      text("    lightweight: #{model_line(lightweight)}", TermUI.Renderer.Style.new(fg: :bright_black)),
+      text("  Models (#{catalog_info.model_count} in catalog)", Style.new(attrs: [:bold])),
+      text("    primary:     #{model_line(primary)}", Style.new(fg: :bright_black)),
+      text("      via #{source_line(primary)} #{model_meta(primary)}", Style.new(fg: :bright_black)),
+      text("    lightweight: #{model_line(lightweight)}", Style.new(fg: :bright_black)),
       text(
         "      via #{source_line(lightweight)} #{model_meta(lightweight)}",
-        TermUI.Renderer.Style.new(fg: :bright_black)
+        Style.new(fg: :bright_black)
       )
     ]
 
@@ -96,13 +107,13 @@ defmodule Worth.UI.Sidebar do
             :no_creds -> "no key"
           end
 
-        text("    #{label}: #{detail}", TermUI.Renderer.Style.new(fg: :bright_black))
+        text("    #{label}: #{detail}", Style.new(fg: :bright_black))
       end)
 
     if provider_lines == [] do
       model_lines
     else
-      model_lines ++ [text("  Providers", TermUI.Renderer.Style.new(attrs: [:bold])) | provider_lines]
+      model_lines ++ [text("  Providers", Style.new(attrs: [:bold])) | provider_lines]
     end
   end
 
@@ -112,21 +123,21 @@ defmodule Worth.UI.Sidebar do
 
     provider_lines =
       if snapshots == [] do
-        [text("  (no providers expose quota)", TermUI.Renderer.Style.new(fg: :bright_black))]
+        [text("  (no providers expose quota)", Style.new(fg: :bright_black))]
       else
         Enum.flat_map(snapshots, &usage_snapshot_lines/1)
       end
 
     session_lines =
       [
-        text("Session", TermUI.Renderer.Style.new(attrs: [:bold])),
+        text("Session", Style.new(attrs: [:bold])),
         text("  Cost:    $#{Float.round(metrics.cost, 4)} (#{metrics.calls} calls)"),
         text("  Tokens:  #{format_int(metrics.input_tokens)} in / #{format_int(metrics.output_tokens)} out"),
         text(
           "  Cache:   #{format_int(metrics.cache_read)} read / #{format_int(metrics.cache_write)} write",
-          TermUI.Renderer.Style.new(fg: :bright_black)
+          Style.new(fg: :bright_black)
         ),
-        text("  Embed:   #{metrics.embed_calls} calls", TermUI.Renderer.Style.new(fg: :bright_black))
+        text("  Embed:   #{metrics.embed_calls} calls", Style.new(fg: :bright_black))
       ]
 
     by_provider_lines =
@@ -135,30 +146,31 @@ defmodule Worth.UI.Sidebar do
           []
 
         entries ->
-          [text("  By provider", TermUI.Renderer.Style.new(attrs: [:bold]))] ++
+          [text("  By provider", Style.new(attrs: [:bold]))] ++
             Enum.map(entries, fn {provider, p} ->
               label = format_provider(provider)
+
               text(
                 "    #{label}  $#{Float.round(p.cost, 4)} (#{p.calls})",
-                TermUI.Renderer.Style.new(fg: :bright_black)
+                Style.new(fg: :bright_black)
               )
             end)
       end
 
     [
-      text("Usage", TermUI.Renderer.Style.new(attrs: [:bold])),
-      text("Providers", TermUI.Renderer.Style.new(attrs: [:bold]))
+      text("Usage", Style.new(attrs: [:bold])),
+      text("Providers", Style.new(attrs: [:bold]))
     ] ++ provider_lines ++ session_lines ++ by_provider_lines
   end
 
   defp usage_snapshot_lines(%AgentEx.LLM.Usage{label: label, credits: credits, windows: windows}) do
     header =
-      text("  #{label}", TermUI.Renderer.Style.new(fg: :white))
+      text("  #{label}", Style.new(fg: :white))
 
     credit_line =
       case credits do
         %{used: used, limit: limit} ->
-          [text("    credits: $#{Float.round(used, 2)} / $#{Float.round(limit, 2)}", TermUI.Renderer.Style.new(fg: :bright_black))]
+          [text("    credits: $#{Float.round(used, 2)} / $#{Float.round(limit, 2)}", Style.new(fg: :bright_black))]
 
         _ ->
           []
@@ -166,7 +178,7 @@ defmodule Worth.UI.Sidebar do
 
     window_lines =
       Enum.map(windows, fn w ->
-        text("    #{w.label}: #{format_window(w)}", TermUI.Renderer.Style.new(fg: :bright_black))
+        text("    #{w.label}: #{format_window(w)}", Style.new(fg: :bright_black))
       end)
 
     [header] ++ credit_line ++ window_lines
@@ -213,16 +225,16 @@ defmodule Worth.UI.Sidebar do
 
     body =
       if entries == [] do
-        [text("  (no log entries)", TermUI.Renderer.Style.new(fg: :bright_black))]
+        [text("  (no log entries)", Style.new(fg: :bright_black))]
       else
         Enum.map(entries, &log_line/1)
       end
 
-    [text("Logs", TermUI.Renderer.Style.new(attrs: [:bold])) | body]
+    [text("Logs", Style.new(attrs: [:bold])) | body]
   end
 
   defp log_line(%{level: level, text: line}) do
-    text("  [#{short_level(level)}] #{truncate(line)}", TermUI.Renderer.Style.new(fg: log_color(level)))
+    text("  [#{short_level(level)}] #{truncate(line)}", Style.new(fg: log_color(level)))
   end
 
   defp short_level(:emergency), do: "emrg"

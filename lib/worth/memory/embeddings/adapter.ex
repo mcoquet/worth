@@ -57,7 +57,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
     case Keyword.get(opts, :model) do
       nil ->
         case Keyword.get(opts, :model_override) do
-          nil -> @default_model
+          nil -> configured_model() || @default_model
           override when is_binary(override) -> override
         end
 
@@ -67,7 +67,21 @@ defmodule Worth.Memory.Embeddings.Adapter do
   end
 
   defp embed_opts(opts) do
-    opts
-    |> Keyword.take([:provider, :model])
+    opts = Keyword.take(opts, [:provider, :model])
+
+    case Keyword.get(opts, :model) do
+      nil ->
+        case configured_model() do
+          nil -> opts
+          model -> Keyword.put(opts, :model, model)
+        end
+
+      _ ->
+        opts
+    end
+  end
+
+  defp configured_model do
+    Worth.Config.get([:memory, :embedding_model])
   end
 end
