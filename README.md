@@ -320,6 +320,43 @@ Full design docs in `docs/`:
 | [skills.md](docs/skills.md) | Skill system, trust levels, self-learning |
 | [mcp.md](docs/mcp.md) | MCP client/server integration |
 | [tools.md](docs/tools.md) | Available tools and extensions |
+| [theme-system.md](docs/theme-system.md) | Theme system and customization |
+
+## Themes
+
+Worth supports multiple visual themes to customize the UI appearance:
+
+| Theme | Description |
+|-------|-------------|
+| `standard` | Catppuccin Mocha (default) - soft dark theme |
+| `cyberdeck` | Tactical HUD aesthetic - neon cyber command |
+| `fifth_element` | Industrial retro-futuristic - Moebius sci-fi |
+
+### Configuring a Theme
+
+Set the theme in your `~/.worth/config.exs`:
+
+```elixir
+%{
+  theme: :fifth_element,
+  llm: %{...},
+  # ...
+}
+```
+
+Or via runtime config in `config/runtime.exs`:
+
+```elixir
+config :worth, theme: :cyberdeck
+```
+
+### Available Themes
+
+- **Standard** - The default Catppuccin Mocha theme with soft pastels
+- **Cyberdeck** - Inspired by Ops Center's tactical HUD with neon cyan/amber on void black
+- **Fifth Element** - Industrial retro-futuristic design with orange chassis, terminal green text, and CRT effects
+
+See [theme-system.md](docs/theme-system.md) for details on creating custom themes.
 
 ## Dependencies
 
