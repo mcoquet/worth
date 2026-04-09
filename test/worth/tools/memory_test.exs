@@ -17,7 +17,7 @@ defmodule Worth.Tools.MemoryTest do
       for def <- Worth.Tools.Memory.definitions() do
         assert Map.has_key?(def, :name)
         assert Map.has_key?(def, :description)
-        assert Map.has_key?(def, :parameters)
+        assert Map.has_key?(def, :input_schema)
       end
     end
   end

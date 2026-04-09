@@ -83,7 +83,7 @@ defmodule Worth.Memory.FactExtractorTest do
   end
 
   describe "extract_and_store/2" do
-    test "extracts and stores facts when enabled" do
+    test "returns empty list when disabled" do
       results =
         Worth.Memory.FactExtractor.extract_and_store(
           "I prefer conventional commits",

@@ -28,7 +28,7 @@ defmodule Worth.Skill.RefinerTest do
 
     File.write!(Path.join(skill_dir, "SKILL.md"), skill_content)
 
-    user_skills = Path.expand("~/.worth/skills")
+    user_skills = Worth.Skill.Paths.user_dir()
     dest = Path.join(user_skills, "refiner-test-skill")
 
     File.rm_rf(dest)
@@ -77,7 +77,7 @@ defmodule Worth.Skill.RefinerTest do
 
       File.write!(Path.join(skill_dir, "SKILL.md"), skill_content)
 
-      user_skills = Path.expand("~/.worth/skills")
+      user_skills = Worth.Skill.Paths.user_dir()
       dest = Path.join(user_skills, "healthy-skill")
       File.rm_rf(dest)
       File.mkdir_p!(user_skills)
