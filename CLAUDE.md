@@ -88,6 +88,70 @@ Modes (code, research, planned, turn_by_turn) change the agent's prompt + autono
 - Memory writes go through `Worth.Memory.Manager` so fact extraction, embedding, and confidence decay are applied consistently.
 - New tools belong under `lib/worth/tools/` and are wired into the agent via the tool registry the Brain hands to `AgentEx.run/1`.
 
+## Theme System
+
+Worth has a theme system (`lib/worth/theme/`) that supports multiple visual themes. All UI components must use the theme system to ensure themes work correctly.
+
+### Theme Architecture
+
+- **Theme modules** (`lib/worth/theme/*.ex`) implement `Worth.Theme` behavior
+- **ThemeHelper** (`lib/worth_web/components/theme_helper.ex`) provides `color/1` function
+- **Themes**: Standard (default), Cyberdeck, Fifth Element
+- Theme is stored in encrypted settings (`Worth.Settings`) and resolved via `Worth.Theme.Registry`
+
+### UI Development Rules
+
+1. **NEVER use hardcoded color classes** (e.g., `text-ctp-blue`, `bg-ctp-mantle`)
+2. **ALWAYS use theme colors** via `color(:key)` helper
+3. **Use string interpolation** in templates: `class={"flex #{color(:background)} #{color(:border)}"}`
+4. **Define new color keys** in theme modules when adding new UI elements
+
+### Available Color Keys
+
+```elixir
+# Core colors
+:background, :surface, :surface_elevated, :border
+:text, :text_muted, :text_dim
+:primary, :secondary, :accent
+:success, :error, :warning, :info
+
+# Component colors
+:button_primary, :button_secondary
+:tab_active, :tab_inactive
+:status_running, :status_idle, :status_error
+:message_user_bg, :message_error_bg, :message_thinking_border, :message_system_bg
+:input_placeholder, :input_disabled_bg, :input_disabled_text
+```
+
+### Correct Pattern
+
+```elixir
+# GOOD - uses theme
+def chat_header(assigns) do
+  ~H"""
+  <header class={"flex #{color(:background)} #{color(:border)} border-b"}>
+    <span class={color(:primary)}>worth</span>
+  </header>
+  """
+end
+
+# BAD - hardcoded colors
+def chat_header(assigns) do
+  ~H"""
+  <header class="flex bg-ctp-mantle border-b border-ctp-surface0">
+    <span class="text-ctp-blue">worth</span>
+  </header>
+  """
+end
+```
+
+### Adding New Themes
+
+1. Create `lib/worth/theme/my_theme.ex` implementing `Worth.Theme` behavior
+2. Define all color keys in `colors/0` function
+3. Add custom CSS in `css/0` function if needed
+4. Register in `lib/worth/theme/registry.ex`
+
 ## Documentation
 
 Design docs live in `docs/` — start with `vision.md`, `architecture.md`, `brain.md`, `memory.md`, `skills.md`, `mcp.md` for the big picture. `implementation-strategy.md` describes the 7-phase build plan.

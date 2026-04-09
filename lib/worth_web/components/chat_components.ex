@@ -6,6 +6,7 @@ defmodule WorthWeb.ChatComponents do
   use Phoenix.Component
 
   import WorthWeb.CoreComponents, only: [icon: 1]
+  import WorthWeb.ThemeHelper, only: [color: 1]
 
   # ── Header ──────────────────────────────────────────────────────
 
@@ -19,31 +20,31 @@ defmodule WorthWeb.ChatComponents do
 
   def chat_header(assigns) do
     ~H"""
-    <header class="flex items-center gap-3 px-4 py-2 bg-ctp-mantle border-b border-ctp-surface0 text-sm shrink-0">
+    <header class={"flex items-center gap-3 px-4 py-2 shrink-0 text-sm #{color(:background)} #{color(:border)} border-b"}>
       <div class="flex items-center gap-2">
         <span class={status_class(@status)}>
           <.status_indicator status={@status} />
         </span>
-        <span class="font-bold text-ctp-blue">worth</span>
+        <span class={"font-bold #{color(:primary)}"}>worth</span>
       </div>
 
-      <span class="text-ctp-surface2">|</span>
-      <span class="text-ctp-text">{@workspace}</span>
+      <span class={color(:text_dim)}>|</span>
+      <span class="color(:text)">{@workspace}</span>
 
-      <span class="text-ctp-surface2">|</span>
-      <span class="text-ctp-lavender">{@mode}</span>
+      <span class="color(:text_dim)">|</span>
+      <span class="color(:secondary)">{@mode}</span>
 
-      <span class="text-ctp-surface2">|</span>
-      <span class="text-ctp-subtext0">t{@turn}</span>
+      <span class="color(:text_dim)">|</span>
+      <span class="color(:text_muted)">t{@turn}</span>
 
-      <span class="text-ctp-surface2">|</span>
-      <span class="text-ctp-yellow">{cost_display(@cost)}</span>
+      <span class="color(:text_dim)">|</span>
+      <span class="color(:accent)">{cost_display(@cost)}</span>
 
-      <span :if={model_label(@models)} class="text-ctp-overlay0">
+      <span :if={model_label(@models)} class="color(:text_dim)">
         ({model_label(@models)})
       </span>
 
-      <span :if={length(@active_agents) > 0} class="text-ctp-peach">
+      <span :if={length(@active_agents) > 0} class="color(:info)">
         <span class="spinner"></span> {@active_agents |> length()} agents
       </span>
 
@@ -52,9 +53,9 @@ defmodule WorthWeb.ChatComponents do
     """
   end
 
-  defp status_class(:running), do: "text-ctp-blue"
-  defp status_class(:error), do: "text-ctp-red"
-  defp status_class(_), do: "text-ctp-overlay0"
+  defp status_class(:running), do: "color(:primary)"
+  defp status_class(:error), do: "color(:error)"
+  defp status_class(_), do: "color(:text_dim)"
 
   defp status_indicator(%{status: :running} = assigns) do
     ~H"""
@@ -91,30 +92,30 @@ defmodule WorthWeb.ChatComponents do
 
   def left_panel(assigns) do
     ~H"""
-    <aside class="w-56 bg-ctp-mantle border-r border-ctp-surface0 overflow-y-auto shrink-0 text-sm">
-      <div class="px-3 py-2 bg-ctp-blue/10 text-ctp-blue font-bold text-xs uppercase tracking-wider">
+    <aside class={"w-56 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-r"}>
+      <div class={"px-3 py-2 font-bold text-xs uppercase tracking-wider #{color(:primary)} bg-opacity-10"}>
         Navigator
       </div>
 
       <%!-- Workspaces --%>
       <div class="px-3 py-2">
-        <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Workspaces</div>
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Workspaces</div>
         <.workspace_list workspace={@workspace} />
       </div>
 
       <%!-- Files --%>
       <div class="px-3 py-2">
-        <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Files</div>
-        <div :if={@files == []} class="text-ctp-overlay0 text-xs">(no files)</div>
-        <div :for={file <- Enum.take(@files, 20)} class="text-xs text-ctp-subtext0 truncate py-px">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Files</div>
+        <div :if={@files == []} class={"text-xs #{color(:text_dim)}"}>(no files)</div>
+        <div :for={file <- Enum.take(@files, 20)} class={"text-xs truncate py-px #{color(:text_muted)}"}>
           {file}
         </div>
       </div>
 
       <%!-- Agents --%>
       <div class="px-3 py-2">
-        <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Agents</div>
-        <div :if={@agents == []} class="text-ctp-overlay0 text-xs">o idle</div>
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Agents</div>
+        <div :if={@agents == []} class={"text-xs #{color(:text_dim)}"}>o idle</div>
         <div :for={agent <- @agents} class="text-xs py-px">
           <.agent_row agent={agent} />
         </div>
@@ -136,11 +137,7 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <div
       :for={ws <- @workspaces}
-      class={[
-        "text-xs py-px",
-        ws == @workspace && "text-ctp-blue font-semibold",
-        ws != @workspace && "text-ctp-subtext0"
-      ]}
+      class={"text-xs py-px #{ws == @workspace && "#{color(:primary)} font-semibold" || color(:text_muted)}"}
     >
       {if ws == @workspace, do: "● ", else: "○ "}{ws}
     </div>
@@ -151,19 +148,19 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <div class={agent_status_class(@agent.status)}>
       <span :if={@agent.status == :running} class="spinner"></span>
-      <span :if={@agent.status == :done} class="text-ctp-green">✓</span>
-      <span :if={@agent.status == :error} class="text-ctp-red">×</span>
-      <span :if={@agent.status not in [:running, :done, :error]} class="text-ctp-overlay0">○</span>
+      <span :if={@agent.status == :done} class={color(:success)}>✓</span>
+      <span :if={@agent.status == :error} class={color(:error)}>×</span>
+      <span :if={@agent.status not in [:running, :done, :error]} class={color(:text_dim)}>○</span>
       {agent_label(@agent)}
-      <span :if={@agent.current_tool} class="text-ctp-overlay0 ml-1">({@agent.current_tool})</span>
+      <span :if={@agent.current_tool} class={"#{color(:text_dim)} ml-1"}>({@agent.current_tool})</span>
     </div>
     """
   end
 
-  defp agent_status_class(:running), do: "text-ctp-yellow"
-  defp agent_status_class(:done), do: "text-ctp-green"
-  defp agent_status_class(:error), do: "text-ctp-red"
-  defp agent_status_class(_), do: "text-ctp-overlay0"
+  defp agent_status_class(:running), do: color(:warning)
+  defp agent_status_class(:done), do: color(:success)
+  defp agent_status_class(:error), do: color(:error)
+  defp agent_status_class(_), do: color(:text_dim)
 
   defp agent_label(agent), do: agent.label || agent.session_id
 
@@ -188,17 +185,17 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :tabs, @tabs)
 
     ~H"""
-    <aside class="w-72 bg-ctp-mantle border-l border-ctp-surface0 overflow-y-auto shrink-0 text-sm">
+    <aside class="w-72 color(:background) border-l color(:border) overflow-y-auto shrink-0 text-sm">
       <%!-- Tab bar --%>
-      <div class="flex border-b border-ctp-surface0">
+      <div class="flex border-b color(:border)">
         <button
           :for={{key, label} <- @tabs}
           phx-click="select_tab"
           phx-value-tab={key}
           class={[
             "px-3 py-1.5 text-xs font-medium cursor-pointer transition-colors",
-            key == @tab && "bg-ctp-blue text-ctp-base",
-            key != @tab && "text-ctp-subtext0 hover:text-ctp-text hover:bg-ctp-surface0"
+            key == @tab && "color(:primary) text-ctp-base",
+            key != @tab && "color(:text_muted) hover:color(:text) hover:bg-ctp-surface0"
           ]}
         >
           {label}
@@ -224,27 +221,27 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :catalog_info, catalog_info)
 
     ~H"""
-    <div class="text-ctp-subtext0 space-y-1">
+    <div class="color(:text_muted) space-y-1">
       <div>Mode: {@mode}</div>
-      <div class="text-ctp-yellow">Cost: {cost_display(@cost)}</div>
+      <div class="color(:accent)">Cost: {cost_display(@cost)}</div>
       <div>Turns: {@turn}</div>
     </div>
 
     <div class="mt-3">
-      <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">
         Models ({@catalog_info.model_count})
       </div>
       <div class="text-xs space-y-1">
-        <div class="text-ctp-subtext0">{model_line(@models, :primary)}</div>
-        <div class="text-ctp-overlay0">via {source_line(@models, :primary)}</div>
-        <div class="text-ctp-subtext0">{model_line(@models, :lightweight)}</div>
-        <div class="text-ctp-overlay0">via {source_line(@models, :lightweight)}</div>
+        <div class="color(:text_muted)">{model_line(@models, :primary)}</div>
+        <div class="color(:text_dim)">via {source_line(@models, :primary)}</div>
+        <div class="color(:text_muted)">{model_line(@models, :lightweight)}</div>
+        <div class="color(:text_dim)">via {source_line(@models, :lightweight)}</div>
       </div>
     </div>
 
     <div :if={@catalog_info.providers != %{}} class="mt-3">
-      <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Providers</div>
-      <div :for={{id, stat} <- @catalog_info.providers} class="text-xs text-ctp-overlay0">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Providers</div>
+      <div :for={{id, stat} <- @catalog_info.providers} class="text-xs color(:text_dim)">
         {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
       </div>
     </div>
@@ -272,19 +269,19 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :metrics, metrics)
 
     ~H"""
-    <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Session</div>
-    <div class="text-xs text-ctp-subtext0 space-y-0.5">
+    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Session</div>
+    <div class="text-xs color(:text_muted) space-y-0.5">
       <div>Cost: ${Float.round(@metrics.cost, 4)} ({@metrics.calls} calls)</div>
       <div>Tokens: {format_int(@metrics.input_tokens)} in / {format_int(@metrics.output_tokens)} out</div>
-      <div class="text-ctp-overlay0">
+      <div class="color(:text_dim)">
         Cache: {format_int(@metrics.cache_read)} read / {format_int(@metrics.cache_write)} write
       </div>
-      <div class="text-ctp-overlay0">Embed: {@metrics.embed_calls} calls</div>
+      <div class="color(:text_dim)">Embed: {@metrics.embed_calls} calls</div>
     </div>
 
     <div :if={@metrics.by_provider != %{}} class="mt-3">
-      <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">By Provider</div>
-      <div :for={{provider, p} <- @metrics.by_provider} class="text-xs text-ctp-overlay0">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">By Provider</div>
+      <div :for={{provider, p} <- @metrics.by_provider} class="text-xs color(:text_dim)">
         {provider} ${Float.round(p.cost, 4)} ({p.calls})
       </div>
     </div>
@@ -293,10 +290,10 @@ defmodule WorthWeb.ChatComponents do
 
   defp tab_content(%{tab: :tools} = assigns) do
     ~H"""
-    <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Built-in Tools</div>
+    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Built-in Tools</div>
     <div
       :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)}
-      class="text-xs text-ctp-subtext0 py-px"
+      class="text-xs color(:text_muted) py-px"
     >
       {tool}
     </div>
@@ -314,10 +311,10 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :skills, skills)
 
     ~H"""
-    <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Skills</div>
-    <div :if={@skills == []} class="text-xs text-ctp-overlay0">(none)</div>
-    <div :for={s <- @skills} class="text-xs text-ctp-subtext0 py-px">
-      {s.name} <span class="text-ctp-overlay0">[{s.trust_level}]</span>
+    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Skills</div>
+    <div :if={@skills == []} class="text-xs color(:text_dim)">(none)</div>
+    <div :for={s <- @skills} class="text-xs color(:text_muted) py-px">
+      {s.name} <span class="color(:text_dim)">[{s.trust_level}]</span>
     </div>
     """
   end
@@ -333,8 +330,8 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :entries, entries)
 
     ~H"""
-    <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Logs</div>
-    <div :if={@entries == []} class="text-xs text-ctp-overlay0">(no log entries)</div>
+    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Logs</div>
+    <div :if={@entries == []} class="text-xs color(:text_dim)">(no log entries)</div>
     <div :for={entry <- @entries} class={["text-xs py-px font-mono", log_color_class(entry.level)]}>
       [{short_level(entry.level)}] {truncate(entry.text)}
     </div>
@@ -343,7 +340,7 @@ defmodule WorthWeb.ChatComponents do
 
   defp tab_content(assigns) do
     ~H"""
-    <div class="text-ctp-overlay0 text-xs">Unknown tab</div>
+    <div class="color(:text_dim) text-xs">Unknown tab</div>
     """
   end
 
@@ -362,8 +359,8 @@ defmodule WorthWeb.ChatComponents do
   defp message_content(%{msg: %{type: :user}} = assigns) do
     ~H"""
     <div class="flex gap-2">
-      <span class="text-ctp-green font-bold shrink-0">you</span>
-      <span class="text-ctp-text">{@msg.content}</span>
+      <span class="color(:success) font-bold shrink-0">you</span>
+      <span class="color(:text)">{@msg.content}</span>
     </div>
     """
   end
@@ -371,7 +368,7 @@ defmodule WorthWeb.ChatComponents do
   defp message_content(%{msg: %{type: :assistant}} = assigns) do
     ~H"""
     <div class="flex gap-2">
-      <span class="text-ctp-blue font-bold shrink-0">ai</span>
+      <span class="color(:primary) font-bold shrink-0">ai</span>
       <div class="markdown-content flex-1 min-w-0">{render_markdown(@msg.content)}</div>
     </div>
     """
@@ -381,7 +378,7 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <div class="flex gap-2">
       <span class="text-ctp-mauve font-bold shrink-0">sys</span>
-      <pre class="text-ctp-subtext0 whitespace-pre-wrap text-xs flex-1 min-w-0">{@msg.content}</pre>
+      <pre class="color(:text_muted) whitespace-pre-wrap text-xs flex-1 min-w-0">{@msg.content}</pre>
     </div>
     """
   end
@@ -389,8 +386,8 @@ defmodule WorthWeb.ChatComponents do
   defp message_content(%{msg: %{type: :error}} = assigns) do
     ~H"""
     <div class="flex gap-2">
-      <span class="text-ctp-red font-bold shrink-0">err</span>
-      <span class="text-ctp-red">{@msg.content}</span>
+      <span class="color(:error) font-bold shrink-0">err</span>
+      <span class="color(:error)">{@msg.content}</span>
     </div>
     """
   end
@@ -400,9 +397,9 @@ defmodule WorthWeb.ChatComponents do
 
     ~H"""
     <div class="flex items-center gap-2 text-xs">
-      <.icon name="hero-wrench-screwdriver" class="size-3 text-ctp-peach" />
-      <span class="text-ctp-peach font-semibold">{@name}</span>
-      <span :if={@msg.content[:status] == :running} class="spinner text-ctp-yellow"></span>
+      <.icon name="hero-wrench-screwdriver" class="size-3 color(:info)" />
+      <span class="color(:info) font-semibold">{@name}</span>
+      <span :if={@msg.content[:status] == :running} class="spinner color(:accent)"></span>
     </div>
     """
   end
@@ -417,12 +414,12 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <div class="text-xs">
       <div class="flex items-center gap-2">
-        <span class={if @status == :failed, do: "text-ctp-red", else: "text-ctp-green"}>
+        <span class={if @status == :failed, do: "color(:error)", else: "color(:success)"}>
           {if @status == :failed, do: "× ", else: "✓ "}
         </span>
-        <span class="text-ctp-peach">{@name}</span>
+        <span class="color(:info)">{@name}</span>
       </div>
-      <pre :if={@output != ""} class="text-ctp-overlay0 whitespace-pre-wrap ml-5 mt-1 max-h-32 overflow-y-auto">{@output}</pre>
+      <pre :if={@output != ""} class="color(:text_dim) whitespace-pre-wrap ml-5 mt-1 max-h-32 overflow-y-auto">{@output}</pre>
     </div>
     """
   end
@@ -431,24 +428,24 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <div class="flex gap-2 text-xs">
       <span class="text-ctp-mauve italic shrink-0">thinking</span>
-      <span class="text-ctp-overlay0 italic">{String.slice(@msg.content, 0, 200)}</span>
+      <span class="color(:text_dim) italic">{String.slice(@msg.content, 0, 200)}</span>
     </div>
     """
   end
 
   defp message_content(assigns) do
     ~H"""
-    <div class="text-ctp-overlay0 text-xs">{inspect(@msg)}</div>
+    <div class="color(:text_dim) text-xs">{inspect(@msg)}</div>
     """
   end
 
-  defp message_wrapper_class(:user), do: "py-2 px-3 rounded-md bg-ctp-surface0/50"
+  defp message_wrapper_class(:user), do: "py-2 px-3 rounded-md #{color(:message_user_bg)}"
   defp message_wrapper_class(:assistant), do: "py-2 px-3"
-  defp message_wrapper_class(:error), do: "py-2 px-3 rounded-md bg-ctp-red/10 border border-ctp-red/30"
+  defp message_wrapper_class(:error), do: "py-2 px-3 rounded-md #{color(:message_error_bg)}"
   defp message_wrapper_class(:tool_call), do: "py-1 px-3 ml-4"
   defp message_wrapper_class(:tool_result), do: "py-1 px-3 ml-4"
-  defp message_wrapper_class(:thinking), do: "py-1 px-3 ml-4 border-l-2 border-ctp-mauve/30"
-  defp message_wrapper_class(:system), do: "py-2 px-3 rounded-md bg-ctp-mauve/5 border border-ctp-mauve/20"
+  defp message_wrapper_class(:thinking), do: "py-1 px-3 ml-4 #{color(:message_thinking_border)}"
+  defp message_wrapper_class(:system), do: "py-2 px-3 rounded-md #{color(:message_system_bg)}"
   defp message_wrapper_class(_), do: "py-1 px-3"
 
   # ── Input bar ───────────────────────────────────────────────────
@@ -458,9 +455,9 @@ defmodule WorthWeb.ChatComponents do
 
   def input_bar(assigns) do
     ~H"""
-    <div class="border-t border-ctp-surface0 bg-ctp-mantle px-4 py-3 shrink-0">
+    <div class="border-t color(:border) color(:background) px-4 py-3 shrink-0">
       <form phx-submit="submit" class="flex items-center gap-3">
-        <span class="text-ctp-blue font-bold text-sm">{@mode} ></span>
+        <span class="color(:primary) font-bold text-sm">{@mode} ></span>
         <input
           type="text"
           name="text"
@@ -469,15 +466,15 @@ defmodule WorthWeb.ChatComponents do
           autocomplete="off"
           phx-hook="InputFocus"
           id="chat-input"
-          class="flex-1 bg-transparent border-none outline-none text-ctp-text placeholder-ctp-overlay0 text-sm font-mono"
+          class={"flex-1 bg-transparent border-none outline-none #{color(:text)} #{color(:input_placeholder)} text-sm font-mono"}
         />
         <button
           type="submit"
           disabled={@status == :running}
           class={[
             "px-3 py-1 rounded text-xs font-semibold transition-colors",
-            @status == :running && "bg-ctp-surface1 text-ctp-overlay0 cursor-not-allowed",
-            @status != :running && "bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+            @status == :running && "#{color(:input_disabled_bg)} #{color(:input_disabled_text)} cursor-not-allowed",
+            @status != :running && "#{color(:button_primary)} cursor-pointer"
           ]}
         >
           Send
@@ -540,12 +537,12 @@ defmodule WorthWeb.ChatComponents do
   defp short_level(:debug), do: "dbg "
   defp short_level(other), do: to_string(other)
 
-  defp log_color_class(level) when level in [:emergency, :alert, :critical, :error], do: "text-ctp-red"
-  defp log_color_class(:warning), do: "text-ctp-yellow"
-  defp log_color_class(:notice), do: "text-ctp-blue"
-  defp log_color_class(:info), do: "text-ctp-text"
-  defp log_color_class(:debug), do: "text-ctp-overlay0"
-  defp log_color_class(_), do: "text-ctp-text"
+  defp log_color_class(level) when level in [:emergency, :alert, :critical, :error], do: "color(:error)"
+  defp log_color_class(:warning), do: "color(:accent)"
+  defp log_color_class(:notice), do: "color(:primary)"
+  defp log_color_class(:info), do: "color(:text)"
+  defp log_color_class(:debug), do: "color(:text_dim)"
+  defp log_color_class(_), do: "color(:text)"
 
   defp truncate(line) do
     line

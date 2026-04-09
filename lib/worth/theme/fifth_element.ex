@@ -30,7 +30,7 @@ defmodule Worth.Theme.FifthElement do
       success: "text-[#00FF41]",
       error: "text-[#FF3333]",
       warning: "text-[#FDB813]",
-      info: "text-[#40A0FF]",
+      info: "text-[#FDB813]",
       # Button classes
       button_primary:
         "bg-[#FF3333] border-2 border-[#FF8C00] text-[#FF8C00] font-bold hover:bg-[#FF4444] shadow-[0_0_15px_#FF3333]/50",
@@ -41,7 +41,16 @@ defmodule Worth.Theme.FifthElement do
       # Status indicators
       status_running: "text-[#FDB813] animate-terminal-flicker",
       status_idle: "text-[#666666]",
-      status_error: "text-[#FF3333]"
+      status_error: "text-[#FF3333]",
+      # Message wrapper classes
+      message_user_bg: "bg-[#FF8C00]/5",
+      message_error_bg: "bg-[#FF3333]/10 border border-[#FF3333]/30",
+      message_thinking_border: "border-l-2 border-[#FDB813]/30",
+      message_system_bg: "bg-[#FDB813]/5 border border-[#FDB813]/20",
+      # Input classes
+      input_placeholder: "placeholder-[#009922]",
+      input_disabled_bg: "bg-[#1a1a1a]",
+      input_disabled_text: "text-[#666666]"
     }
   end
 

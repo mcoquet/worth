@@ -29,7 +29,7 @@ defmodule Worth.Theme.Cyberdeck do
       success: "text-[#40ff80]",
       error: "text-[#ff4040]",
       warning: "text-[#f0c040]",
-      info: "text-[#40a0ff]",
+      info: "text-[#ff40a0]",
       # Button classes
       button_primary:
         "bg-[#00d4ff]/20 border border-[#00d4ff]/40 text-[#00d4ff] hover:bg-[#00d4ff]/30 hover:shadow-[0_0_15px_#00d4ff]/30",
@@ -41,7 +41,16 @@ defmodule Worth.Theme.Cyberdeck do
       # Status indicators
       status_running: "text-[#f0c040] animate-cyber-pulse",
       status_idle: "text-[#555566]",
-      status_error: "text-[#ff4040]"
+      status_error: "text-[#ff4040]",
+      # Message wrapper classes (using surface colors with transparency)
+      message_user_bg: "bg-[#00d4ff]/5",
+      message_error_bg: "bg-[#ff4040]/10 border border-[#ff4040]/30",
+      message_thinking_border: "border-l-2 border-[#f0c040]/30",
+      message_system_bg: "bg-[#f0c040]/5 border border-[#f0c040]/20",
+      # Input classes
+      input_placeholder: "placeholder-[#555566]",
+      input_disabled_bg: "bg-[#16161e]",
+      input_disabled_text: "text-[#555566]"
     }
   end
 

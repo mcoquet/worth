@@ -2,6 +2,7 @@ defmodule WorthWeb.ChatLive do
   use WorthWeb, :live_view
 
   import WorthWeb.ChatComponents
+  import WorthWeb.SettingsComponents
 
   require Logger
 
@@ -17,9 +18,11 @@ defmodule WorthWeb.ChatLive do
     workspace = Application.get_env(:worth, :current_workspace, "personal")
     mode = Application.get_env(:worth, :current_mode, :code)
 
+    prior_messages = load_last_session_messages(workspace)
+
     {:ok,
      socket
-     |> stream(:messages, [])
+     |> stream(:messages, prior_messages)
      |> assign(
        page_title: "Worth",
        input_text: "",
@@ -35,7 +38,10 @@ defmodule WorthWeb.ChatLive do
        active_agents: [],
        workspace_files: [],
        input_history: [],
-       history_index: -1
+       history_index: -1,
+       view: :chat,
+       has_history: prior_messages != [],
+       settings_form: default_settings_form()
      )}
   end
 
@@ -83,6 +89,7 @@ defmodule WorthWeb.ChatLive do
       |> update(:turn, &(&1 + 1))
       |> push_input_history(text)
       |> stream_insert(:messages, %{id: msg_id(), type: :user, content: text})
+      |> push_event("clear_input", %{})
 
     case Worth.UI.Commands.parse(text) do
       :message ->
@@ -114,7 +121,168 @@ defmodule WorthWeb.ChatLive do
     {:noreply, assign(socket, selected_tab: Enum.at(tabs, idx, :status))}
   end
 
+  def handle_event("keydown", %{"key" => "Escape"}, socket) do
+    if socket.assigns.view == :settings do
+      {:noreply, assign(socket, view: :chat)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("keydown", _params, socket), do: {:noreply, socket}
+
+  # ── Settings events ────────────────────────────────────────────
+
+  def handle_event("settings_setup_password", %{"password" => password}, socket) do
+    case Worth.Settings.setup_password(password) do
+      :ok ->
+        Worth.Settings.import_from_config_store()
+        socket = load_settings_form(socket)
+        {:noreply, append_system_message(socket, "Master password set and vault unlocked.")}
+
+      {:error, :already_set} ->
+        {:noreply, append_system_message(socket, "Master password already exists. Use unlock.")}
+
+      {:error, :empty_password} ->
+        {:noreply, append_system_message(socket, "Password cannot be empty.")}
+
+      {:error, _} ->
+        {:noreply, append_system_message(socket, "Failed to set password.")}
+    end
+  end
+
+  def handle_event("settings_unlock", %{"password" => password}, socket) do
+    case Worth.Settings.unlock(password) do
+      :ok ->
+        export_secrets_to_env()
+        socket = load_settings_form(socket)
+        {:noreply, append_system_message(socket, "Vault unlocked.")}
+
+      {:error, :invalid_password} ->
+        {:noreply, append_system_message(socket, "Invalid password.")}
+
+      {:error, :no_password_set} ->
+        {:noreply, append_system_message(socket, "No master password set yet.")}
+    end
+  end
+
+  def handle_event("settings_lock", _params, socket) do
+    Worth.Settings.lock()
+    {:noreply, socket |> assign(settings_form: default_settings_form())}
+  end
+
+  def handle_event("settings_save", params, socket) do
+    saved =
+      params
+      |> Map.drop(["_target", "_csrf_token"])
+      |> Enum.reject(fn {_k, v} -> v == "" end)
+      |> Enum.map(fn {key, value} ->
+        category =
+          if String.contains?(key, "API_KEY") or String.contains?(key, "SECRET"), do: "secret", else: "preference"
+
+        Worth.Settings.put(key, value, category)
+        key
+      end)
+
+    if saved != [] do
+      export_secrets_to_env()
+      socket = load_settings_form(socket)
+      {:noreply, append_system_message(socket, "Saved: #{Enum.join(saved, ", ")}")}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("settings_save_key", %{"env_var" => env_var, "api_key" => key}, socket) when key != "" do
+    Worth.Settings.put(env_var, key, "secret")
+    System.put_env(env_var, key)
+    export_secrets_to_env()
+    socket = load_settings_form(socket)
+    {:noreply, append_system_message(socket, "Saved #{env_var}.")}
+  end
+
+  def handle_event("settings_save_key", _params, socket), do: {:noreply, socket}
+
+  def handle_event("settings_delete", %{"key" => key}, socket) do
+    Worth.Settings.delete(key)
+    socket = load_settings_form(socket)
+    {:noreply, append_system_message(socket, "Deleted: #{key}")}
+  end
+
+  def handle_event("settings_change_password", params, socket) do
+    current = params["current_password"] || ""
+    new_pw = params["new_password"] || ""
+
+    case Worth.Settings.change_password(current, new_pw) do
+      :ok ->
+        {:noreply, append_system_message(socket, "Master password changed.")}
+
+      {:error, :invalid_password} ->
+        {:noreply, append_system_message(socket, "Current password is incorrect.")}
+
+      {:error, :empty_password} ->
+        {:noreply, append_system_message(socket, "New password cannot be empty.")}
+
+      {:error, _} ->
+        {:noreply, append_system_message(socket, "Failed to change password.")}
+    end
+  end
+
+  def handle_event("settings_set_theme", %{"theme" => theme_name}, socket) do
+    case Worth.Theme.Registry.get(theme_name) do
+      {:ok, _theme_mod} ->
+        Application.put_env(:worth, :theme, theme_name)
+
+        try do
+          if function_exported?(Worth.Settings, :put, 3) do
+            Worth.Settings.put("theme", theme_name, "preference")
+          end
+        rescue
+          _ -> nil
+        end
+
+        socket = load_settings_form(socket)
+        {:noreply, append_system_message(socket, "Theme changed to #{theme_name}.")}
+
+      {:error, _} ->
+        {:noreply, append_system_message(socket, "Unknown theme: #{theme_name}")}
+    end
+  end
+
+  def handle_event("settings_set_routing", %{"mode" => mode} = params, socket) do
+    preference = params["preference"] || "optimize_price"
+    filter = params["filter"] || ""
+
+    routing = %{
+      mode: mode,
+      preference: preference,
+      filter: if(filter == "free_only", do: "free_only", else: "")
+    }
+
+    Application.put_env(:worth, :model_routing, routing)
+
+    try do
+      Worth.Settings.put("model_routing_mode", mode, "preference")
+      Worth.Settings.put("model_routing_preference", preference, "preference")
+      Worth.Settings.put("model_routing_filter", routing.filter, "preference")
+    rescue
+      _ -> nil
+    end
+
+    socket = load_settings_form(socket)
+    label = routing_label(mode, preference, routing.filter)
+    {:noreply, append_system_message(socket, "Model routing: #{label}")}
+  end
+
+  defp routing_label("auto", pref, "free_only"), do: "Auto (#{pref}, free only)"
+  defp routing_label("auto", pref, _), do: "Auto (#{pref})"
+  defp routing_label("manual", _, "free_only"), do: "Manual (free only)"
+  defp routing_label("manual", _, _), do: "Manual (tier-based)"
+  defp routing_label(m, _, _), do: m
+
+  def handle_event("settings_back", _params, socket) do
+    {:noreply, assign(socket, view: :chat)}
+  end
 
   # ── Event processing (ported from Worth.UI.Events) ──────────────
 
@@ -186,6 +354,7 @@ defmodule WorthWeb.ChatLive do
         socket
         |> stream_insert(:messages, %{id: msg_id(), type: :assistant, content: final})
         |> assign(streaming_text: "", status: :idle)
+        |> push_event("scroll_to_bottom", %{})
 
       {:error, reason} ->
         reason_str = if is_binary(reason), do: reason, else: inspect(reason)
@@ -234,14 +403,21 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp format_model_slot(nil), do: %{label: nil, source: nil}
+  defp format_model_slot({:ok, resolved}) when is_map(resolved), do: format_model_slot(resolved)
+  defp format_model_slot({:error, _}), do: %{label: nil, source: nil}
 
-  defp format_model_slot(resolved) do
+  defp format_model_slot(resolved) when is_map(resolved) do
+    provider = Map.get(resolved, :provider_name, "")
+    source = Map.get(resolved, :source, "")
+
     %{
       label: Map.get(resolved, :label) || Map.get(resolved, :model_id),
-      source: Map.get(resolved, :source),
+      source: if(provider != "", do: "#{source}/#{provider}", else: to_string(source)),
       context_window: Map.get(resolved, :context_window)
     }
   end
+
+  defp format_model_slot(_), do: %{label: nil, source: nil}
 
   def append_system_message(socket, msg) do
     stream_insert(socket, :messages, %{id: msg_id(), type: :system, content: msg})
@@ -253,6 +429,168 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp msg_id, do: System.unique_integer([:positive]) |> to_string()
+
+  defp default_settings_form do
+    %{
+      locked: safe_vault_call(fn -> Worth.Settings.locked?() end, true),
+      has_password: safe_vault_call(fn -> Worth.Settings.has_password?() end, false),
+      providers: [],
+      preferences: [],
+      themes: theme_list(),
+      current_theme: current_theme_name(),
+      coding_agents: coding_agents_list(),
+      routing: current_routing()
+    }
+  end
+
+  defp safe_vault_call(fun, default) do
+    fun.()
+  rescue
+    _ -> default
+  catch
+    :exit, _ -> default
+  end
+
+  def refresh_settings_form(socket), do: load_settings_form(socket)
+
+  defp load_settings_form(socket) do
+    preferences =
+      Worth.Settings.all_by_category("preference")
+      |> Enum.map(fn s -> %{key: s.key, value: s.encrypted_value} end)
+
+    assign(socket,
+      settings_form: %{
+        locked: Worth.Settings.locked?(),
+        has_password: Worth.Settings.has_password?(),
+        providers: provider_list(),
+        preferences: preferences,
+        themes: theme_list(),
+        current_theme: current_theme_name(),
+        coding_agents: coding_agents_list(),
+        routing: current_routing()
+      }
+    )
+  end
+
+  defp theme_list do
+    Worth.Theme.Registry.list()
+    |> Enum.map(fn mod -> %{name: mod.name(), display_name: mod.display_name(), description: mod.description()} end)
+  end
+
+  defp current_theme_name do
+    theme = Worth.Theme.Registry.resolve()
+    theme.name()
+  end
+
+  defp provider_list do
+    # Get stored keys from the vault
+    stored_keys =
+      Worth.Settings.all_by_category("secret")
+      |> Map.new(fn s -> {s.key, s.encrypted_value} end)
+
+    AgentEx.LLM.ProviderRegistry.list()
+    |> Enum.map(fn entry ->
+      mod = entry.module
+      env_var = List.first(mod.env_vars()) || ""
+      has_key = has_provider_key?(env_var, stored_keys)
+      model_count = provider_model_count(entry.id)
+
+      %{
+        id: entry.id,
+        label: mod.label(),
+        env_var: env_var,
+        has_key: has_key,
+        key_hint: key_hint(env_var, stored_keys),
+        model_count: model_count
+      }
+    end)
+    |> Enum.sort_by(fn p -> {!p.has_key, p.label} end)
+  end
+
+  defp has_provider_key?(env_var, stored_keys) when env_var != "" do
+    Map.has_key?(stored_keys, env_var) or (System.get_env(env_var) || "") != ""
+  end
+
+  defp has_provider_key?(_, _), do: false
+
+  defp key_hint(env_var, stored_keys) when env_var != "" do
+    value = Map.get(stored_keys, env_var) || System.get_env(env_var) || ""
+
+    if String.length(value) > 8 do
+      "#{String.slice(value, 0, 8)}..."
+    else
+      ""
+    end
+  end
+
+  defp key_hint(_, _), do: ""
+
+  defp provider_model_count(provider_id) do
+    try do
+      AgentEx.LLM.Catalog.for_provider(provider_id) |> length()
+    rescue
+      _ -> 0
+    catch
+      :exit, _ -> 0
+    end
+  end
+
+  defp current_routing do
+    case Application.get_env(:worth, :model_routing) do
+      %{mode: mode, preference: pref, filter: filter} ->
+        %{mode: mode, preference: pref, filter: filter}
+
+      _ ->
+        %{mode: "manual", preference: "optimize_price", filter: ""}
+    end
+  end
+
+  defp load_last_session_messages(workspace) do
+    workspace_path = Worth.Workspace.Service.resolve_path(workspace)
+
+    with {:ok, sessions} <- Worth.Persistence.Transcript.list_sessions(workspace_path),
+         last when not is_nil(last) <- List.last(sessions),
+         {:ok, entries} <- Worth.Persistence.Transcript.load(last, workspace_path) do
+      entries
+      |> Enum.map(fn entry ->
+        event = entry["event"] || %{}
+        role = event["role"]
+        text = event["text"] || ""
+
+        type =
+          case role do
+            "user" -> :user
+            "assistant" -> :assistant
+            _ -> :system
+          end
+
+        %{id: msg_id(), type: type, content: text}
+      end)
+    else
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp coding_agents_list do
+    try do
+      Worth.CodingAgents.discover()
+    rescue
+      _ -> []
+    catch
+      :exit, _ -> []
+    end
+  end
+
+  defp export_secrets_to_env do
+    Worth.Config.export_vault_secrets()
+
+    # Trigger catalog refresh so providers pick up new keys
+    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+      AgentEx.LLM.Catalog.refresh()
+    end)
+  end
 
   defp render_streaming(text) do
     case Earmark.as_html(text, compact_output: true) do
