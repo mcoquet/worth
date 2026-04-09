@@ -13,7 +13,9 @@ defmodule Worth.Brain do
     :mode,
     :profile,
     :tool_permissions,
-    :active_tools
+    :active_tools,
+    :task_pid,
+    :task_from
   ]
 
   @default_tool_permissions %{
@@ -45,6 +47,10 @@ defmodule Worth.Brain do
 
   def set_ui_pid(pid) do
     GenServer.call(__MODULE__, {:set_ui_pid, pid})
+  end
+
+  def stop do
+    GenServer.call(__MODULE__, :stop)
   end
 
   def get_status do
@@ -154,12 +160,31 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:send_message, text}, from, state) do
-    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      result = execute_agent_loop(text, state)
-      GenServer.reply(from, result)
-    end)
+    {:ok, pid} =
+      Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+        result = execute_agent_loop(text, state)
+        GenServer.reply(from, result)
+      end)
 
-    {:noreply, %{state | status: :running}}
+    {:noreply, %{state | status: :running, task_pid: pid, task_from: from}}
+  end
+
+  def handle_call(:stop, _from, %{status: :running, task_pid: pid} = state) when is_pid(pid) do
+    # Kill the agent loop task
+    if Process.alive?(pid) do
+      Process.unlink(pid)
+      Process.exit(pid, :kill)
+    end
+
+    # Reply to the pending send_message caller so it doesn't hang
+    if state.task_from, do: GenServer.reply(state.task_from, {:error, :stopped})
+
+    Logger.info("[Brain] Agent execution stopped by user")
+    {:reply, :ok, %{state | status: :idle, task_pid: nil, task_from: nil}}
+  end
+
+  def handle_call(:stop, _from, state) do
+    {:reply, :ok, %{state | status: :idle, task_pid: nil, task_from: nil}}
   end
 
   def handle_call({:switch_mode, mode}, _from, state) do
@@ -258,7 +283,7 @@ defmodule Worth.Brain do
 
         {:done, _} ->
           maybe_trigger_proactive_review(state)
-          %{state | status: :idle}
+          %{state | status: :idle, task_pid: nil, task_from: nil}
 
         {:tool_call, %{name: name}} ->
           %{state | active_tools: state.active_tools ++ [name]}
