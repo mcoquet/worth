@@ -5,19 +5,44 @@ import topbar from "../vendor/topbar"
 
 let Hooks = {}
 
-// Auto-scroll chat container when streaming
+// Auto-scroll chat container when streaming, but only if user is near the bottom
 Hooks.ChatScroll = {
   mounted() {
+    this.userScrolledUp = false
+    this.el.addEventListener("scroll", () => {
+      const threshold = 150
+      const distFromBottom = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight
+      this.userScrolledUp = distFromBottom > threshold
+    })
+    this.handleEvent("scroll_to_bottom", () => {
+      this.scrollToBottom()
+    })
+
+    // Watch for new stream items being inserted (LiveView streams don't trigger updated())
+    this.observer = new MutationObserver(() => {
+      if (!this.userScrolledUp) {
+        this.scrollToBottom()
+      }
+    })
+    const streamContainer = this.el.querySelector("[phx-update='stream']")
+    if (streamContainer) {
+      this.observer.observe(streamContainer, { childList: true })
+    }
+
     this.scrollToBottom()
   },
   updated() {
-    if (this.el.dataset.autoScroll === "true") {
+    if (this.el.dataset.autoScroll === "true" && !this.userScrolledUp) {
       this.scrollToBottom()
     }
+  },
+  destroyed() {
+    if (this.observer) this.observer.disconnect()
   },
   scrollToBottom() {
     requestAnimationFrame(() => {
       this.el.scrollTop = this.el.scrollHeight
+      this.userScrolledUp = false
     })
   }
 }
@@ -26,12 +51,35 @@ Hooks.ChatScroll = {
 Hooks.InputFocus = {
   mounted() {
     this.el.focus()
+    this.handleEvent("clear_input", () => {
+      this.el.value = ""
+      this.el.focus()
+    })
   },
   updated() {
     if (!this.el.disabled) {
       this.el.focus()
       this.el.value = ""
     }
+  }
+}
+
+// Manages live theme switching — updates body class and theme <style> tag
+Hooks.ThemeManager = {
+  mounted() {
+    this.handleEvent("apply_theme", ({bg_class, css}) => {
+      // Update body class — remove all bg-* classes, apply new one
+      const body = document.body
+      const classes = [...body.classList].filter(c => c.startsWith("bg-"))
+      classes.forEach(c => body.classList.remove(c))
+      bg_class.split(" ").filter(Boolean).forEach(c => body.classList.add(c))
+
+      // Update theme style tag
+      const styleEl = document.getElementById("theme-css")
+      if (styleEl) {
+        styleEl.textContent = css
+      }
+    })
   }
 }
 

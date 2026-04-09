@@ -43,6 +43,9 @@ config :worth,
   cost_limit: 5.0,
   max_turns: 50
 
+# --- Vault (ciphers configured at runtime after password unlock) ---
+config :worth, Worth.Vault, ciphers: []
+
 # --- Database ---
 config :worth, Worth.Repo,
   username: "postgres",

@@ -6,6 +6,7 @@
 *.iml
 .DS_Store
 /debug/
+/design/
 
 # Phoenix/assets build output
 /priv/static/assets/

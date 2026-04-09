@@ -71,6 +71,10 @@ defmodule Worth.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
 
+      # Encryption
+      {:cloak_ecto, "~> 1.3"},
+      {:pbkdf2_elixir, "~> 2.2"},
+
       # Utilities
       {:nimble_options, "~> 1.1"},
       {:owl, "~> 0.12"},
