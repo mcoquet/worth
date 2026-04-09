@@ -6,7 +6,7 @@ defmodule Worth.Tools.Memory do
       %{
         name: "memory_query",
         description: "Search the global knowledge store for relevant memories and facts",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             query: %{type: "string", description: "Search query for memory retrieval"},
@@ -18,7 +18,7 @@ defmodule Worth.Tools.Memory do
       %{
         name: "memory_write",
         description: "Store a fact or observation in the global knowledge store",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             content: %{type: "string", description: "The fact or observation to remember"},
@@ -35,7 +35,7 @@ defmodule Worth.Tools.Memory do
       %{
         name: "memory_note",
         description: "Add a session-local note to working memory (ephemeral, not persisted until flush)",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             content: %{type: "string", description: "The note content"},
@@ -47,7 +47,7 @@ defmodule Worth.Tools.Memory do
       %{
         name: "memory_recall",
         description: "Read all entries in the current session's working memory",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{}
         }

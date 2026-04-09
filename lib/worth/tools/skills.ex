@@ -6,7 +6,7 @@ defmodule Worth.Tools.Skills do
       %{
         name: "skill_list",
         description: "List all available skills with metadata and trust levels",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             filter: %{
@@ -19,7 +19,7 @@ defmodule Worth.Tools.Skills do
       %{
         name: "skill_read",
         description: "Load the full SKILL.md content for a specific skill (L2 disclosure)",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             name: %{type: "string", description: "Skill name to read"}
@@ -30,7 +30,7 @@ defmodule Worth.Tools.Skills do
       %{
         name: "skill_install",
         description: "Install a skill from a local path or create from content",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             name: %{type: "string", description: "Name for the skill"},
@@ -43,7 +43,7 @@ defmodule Worth.Tools.Skills do
       %{
         name: "skill_remove",
         description: "Remove an installed skill (cannot remove core skills)",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             name: %{type: "string", description: "Skill name to remove"}
@@ -54,7 +54,7 @@ defmodule Worth.Tools.Skills do
       %{
         name: "skill_create",
         description: "Create a new learned skill from experience or analysis",
-        parameters: %{
+        input_schema: %{
           type: "object",
           properties: %{
             name: %{type: "string", description: "Skill name (lowercase, hyphens)"},

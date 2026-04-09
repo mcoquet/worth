@@ -58,6 +58,35 @@ defmodule Worth.Theme.Cyberdeck do
     """
     /* Cyberdeck Theme - Tactical Ops Interface */
 
+    /* Override Catppuccin CSS variables for global theme switch */
+    :root {
+      --color-ctp-base: #0c0c12;
+      --color-ctp-mantle: #0c0c12;
+      --color-ctp-crust: #06060a;
+      --color-ctp-surface0: #16161e;
+      --color-ctp-surface1: #1e1e28;
+      --color-ctp-surface2: #2a2a38;
+      --color-ctp-overlay0: #555566;
+      --color-ctp-overlay1: #6c6c80;
+      --color-ctp-overlay2: #8888a0;
+      --color-ctp-text: #d4d4d4;
+      --color-ctp-subtext0: #8888a0;
+      --color-ctp-subtext1: #aaaabb;
+      --color-ctp-blue: #00d4ff;
+      --color-ctp-lavender: #00d4ff;
+      --color-ctp-green: #40ff80;
+      --color-ctp-yellow: #f0c040;
+      --color-ctp-red: #ff4040;
+      --color-ctp-teal: #00d4ff;
+      --color-ctp-mauve: #ff40a0;
+      --color-ctp-peach: #f0c040;
+      --color-ctp-pink: #ff40a0;
+      --color-ctp-sky: #00d4ff;
+      --color-ctp-flamingo: #ff40a0;
+      --color-ctp-rosewater: #f0c040;
+      --color-ctp-sapphire: #00a0cc;
+    }
+
     /* Cyber Grid Background */
     .cyber-grid-bg {
       background-image:

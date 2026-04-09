@@ -58,6 +58,35 @@ defmodule Worth.Theme.FifthElement do
     """
     /* Fifth Element Theme - Industrial Retro-Futuristic */
 
+    /* Override Catppuccin CSS variables for global theme switch */
+    :root {
+      --color-ctp-base: #0a0a0a;
+      --color-ctp-mantle: #0a0a0a;
+      --color-ctp-crust: #050505;
+      --color-ctp-surface0: #1a1a1a;
+      --color-ctp-surface1: #2C2C2C;
+      --color-ctp-surface2: #3a3a3a;
+      --color-ctp-overlay0: #666666;
+      --color-ctp-overlay1: #888888;
+      --color-ctp-overlay2: #999999;
+      --color-ctp-text: #00FF41;
+      --color-ctp-subtext0: #00CC33;
+      --color-ctp-subtext1: #00DD38;
+      --color-ctp-blue: #FF8C00;
+      --color-ctp-lavender: #FF8C00;
+      --color-ctp-green: #00FF41;
+      --color-ctp-yellow: #FDB813;
+      --color-ctp-red: #FF3333;
+      --color-ctp-teal: #00FF41;
+      --color-ctp-mauve: #FDB813;
+      --color-ctp-peach: #FF8C00;
+      --color-ctp-pink: #FDB813;
+      --color-ctp-sky: #C0C0C0;
+      --color-ctp-flamingo: #FF8C00;
+      --color-ctp-rosewater: #FDB813;
+      --color-ctp-sapphire: #C0C0C0;
+    }
+
     /* Import fonts */
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Fira+Code:wght@400;500&display=swap');
 
