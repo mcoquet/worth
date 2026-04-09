@@ -24,13 +24,7 @@ defmodule Worth.Mcp.ToolIndex do
 
   def unregister_server(server_name) do
     server = to_string(server_name)
-
-    :ets.match_delete(@table, {:"$1", server, :_, :_})
-
-    :ets.tab2list(@table)
-    |> Enum.filter(fn {_key, srv, _, _} -> srv == server end)
-    |> Enum.each(fn {key, _, _, _} -> :ets.delete(@table, key) end)
-
+    :ets.match_delete(@table, {:_, server, :_, :_})
     :ok
   end
 

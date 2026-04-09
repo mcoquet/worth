@@ -52,7 +52,7 @@ defmodule Worth.Mcp.ConnectionMonitor do
         attempts = Map.get(state.attempts, conn.name, 0) + 1
 
         if attempts <= @max_reconnect_attempts do
-          try_reconnect(conn.name)
+          try_reconnect(conn.name, attempts)
           %{state | attempts: Map.put(state.attempts, conn.name, attempts)}
         else
           Phoenix.PubSub.broadcast(Worth.PubSub, "mcp:events", {:mcp_failed, conn.name})
@@ -61,7 +61,7 @@ defmodule Worth.Mcp.ConnectionMonitor do
     end
   end
 
-  defp try_reconnect(server_name) do
+  defp try_reconnect(server_name, attempt_count) do
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
       case Worth.Mcp.Config.get_server(server_name) do
         nil ->
@@ -70,8 +70,8 @@ defmodule Worth.Mcp.ConnectionMonitor do
         config ->
           Worth.Mcp.Broker.disconnect(server_name)
 
-          backoff = min(:math.pow(2, Map.get(%{}, server_name, 0)), 30_000)
-          Process.sleep(trunc(backoff))
+          backoff = min(trunc(:math.pow(2, attempt_count)) * 1_000, 30_000)
+          Process.sleep(backoff)
 
           case Worth.Mcp.Broker.connect(server_name, config) do
             {:ok, _} ->

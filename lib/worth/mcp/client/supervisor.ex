@@ -27,7 +27,9 @@ defmodule Worth.Mcp.Client.Supervisor do
       protocol_version: protocol_version
     )
   rescue
-    _ ->
+    e ->
+      require Logger
+      Logger.warning("MCP supervisor start failed for #{server_name}: #{Exception.message(e)}, falling back to base client")
       client_name = String.to_atom("worth_mcp_#{server_name}")
 
       Hermes.Client.Base.start_link(

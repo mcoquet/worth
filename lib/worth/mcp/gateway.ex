@@ -10,14 +10,12 @@ defmodule Worth.Mcp.Gateway do
   end
 
   def resolve_tool(tool_name) do
-    case Worth.Mcp.ToolIndex.find_server(tool_name) do
-      {:ok, server} ->
-        {:ok, schema} = Worth.Mcp.ToolIndex.get_schema(tool_name)
-        original_name = schema["name"] || schema[:name] || tool_name
-        {:mcp, server, original_name, schema}
-
-      {:error, :not_found} ->
-        {:error, :not_found}
+    with {:ok, server} <- Worth.Mcp.ToolIndex.find_server(tool_name),
+         {:ok, schema} <- Worth.Mcp.ToolIndex.get_schema(tool_name) do
+      original_name = schema["name"] || schema[:name] || tool_name
+      {:mcp, server, original_name, schema}
+    else
+      {:error, _} -> {:error, :not_found}
     end
   end
 

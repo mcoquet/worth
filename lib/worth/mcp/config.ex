@@ -17,7 +17,7 @@ defmodule Worth.Mcp.Config do
     load(workspace_path) |> Map.get(to_string(name))
   end
 
-  def add_server(name, config, _persist \\ :global) do
+  def add_server(name, config) do
     name = to_string(name)
     servers = load_global()
     updated = Map.put(servers, name, config)
@@ -119,29 +119,24 @@ defmodule Worth.Mcp.Config do
     end
   end
 
-  defp save_global(_servers) do
+  defp save_global(servers) do
     dir = Path.dirname(global_config_path())
     File.mkdir_p!(dir)
 
-    _config_content =
-      "~/.worth/config.exs" |> Path.expand() |> File.read() ||
-        "%{}"
-
     existing =
       if File.exists?(global_config_path()) do
-        File.read!(global_config_path())
+        try do
+          {result, _} = Code.eval_file(global_config_path())
+          if is_map(result), do: result, else: %{}
+        rescue
+          _ -> %{}
+        end
       else
-        "%{}"
+        %{}
       end
 
-    new_config =
-      if String.contains?(existing, "mcp:") do
-        existing
-      else
-        existing <> "\n\nconfig :worth, mcp: %{servers: %{}}\n"
-      end
-
-    File.write!(global_config_path(), new_config)
+    updated = put_in(existing, [Access.key(:mcp, %{}), Access.key(:servers, %{})], servers)
+    File.write!(global_config_path(), inspect(updated, pretty: true, limit: :infinity))
     :ok
   end
 
