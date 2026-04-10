@@ -96,6 +96,110 @@ The telemetry path already reads `cache_read`/`cache_write` defensively, so Phas
 - **`Worth.Memory.Embeddings.Adapter` moduledoc** describes the tier resolution logic but the actual logic lives in `AgentEx.LLM.embed_tier/3`. Cross-reference.
 - **`agent_ex/lib/agent_ex/llm/usage_manager.ex` config block.** The `:agent_ex, :usage, :refresh_interval_ms` key isn't documented in `AgentEx.Config`'s `nimble_options` schema. Add it.
 
+## libSQL Migration Test Fixes (Phase 1-2 Post-Implementation)
+
+Discovered during the PostgreSQL → libSQL migration implementation. These are pre-existing test issues that became visible during migration testing but are unrelated to the database backend changes.
+
+### 1. Brain API Function Signature Mismatches
+
+**Issue:** Tests call `Worth.Brain.get_status/0`, `switch_mode/1`, and `switch_workspace/1` but the actual functions are `get_status/1`, `switch_mode/2`, and `switch_workspace/2` (requiring a session/workspace argument).
+
+**Affected Tests:**
+- `test/worth/brain_test.exs:5` - `Worth.Brain.get_status()`
+- `test/worth/brain_test.exs:13` - `Worth.Brain.switch_mode(:research)`
+- `test/worth/brain_test.exs:21` - `Worth.Brain.switch_workspace("personal")`
+
+**Fix:** Update test calls to match actual function signatures:
+```elixir
+# Before (wrong):
+status = Worth.Brain.get_status()
+:ok = Worth.Brain.switch_mode(:research)
+:ok = Worth.Brain.switch_workspace("personal")
+
+# After (correct):
+status = Worth.Brain.get_status(session_id)
+:ok = Worth.Brain.switch_mode(session_id, :research)
+:ok = Worth.Brain.switch_workspace(session_id, "personal")
+```
+
+### 2. Missing Repo.query/2 in Worth.Repo
+
+**Issue:** Several modules call `Worth.Repo.query/2` directly, but this function is not defined in `Worth.Repo`. The query functions are provided by `Ecto.Adapters.SQL` and need to be imported or required.
+
+**Affected Modules:**
+- `lib/mneme/search/vector.ex` - Line 204: `repo.query(sql, params)`
+- `lib/mneme/pipeline/embedder.ex` - Line 143: `repo.query("UPDATE...", [...])`
+- Various test modules calling `Worth.Repo.query/2`
+
+**Fix:** Add `require Ecto.Adapters.SQL` to modules that need raw query access:
+```elixir
+# In Worth.Repo:
+defmodule Worth.Repo do
+  use Ecto.Repo, @repo_opts
+  require Ecto.Adapters.SQL
+  
+  # Now Repo.query/2 is available
+end
+
+# Or in calling modules:
+defmodule Mneme.Search.Vector do
+  import Ecto.Adapters.SQL, only: [query: 3]
+  
+  # Then use query(repo, sql, params)
+end
+```
+
+### 3. Application Startup in Test Environment
+
+**Issue:** Test `test worth application starts` fails because `Worth.Brain` process is not running at test time. The test expects `Process.whereis(Worth.Brain)` to return a pid, but it returns `nil`.
+
+**Affected Test:**
+- `test/worth_test.exs:4` - `assert Process.whereis(Worth.Brain) != nil`
+
+**Fix Options:**
+1. **Start Brain in test setup:**
+```elixir
+# test/test_helper.exs or test setup
+{:ok, _pid} = Worth.Brain.start_link([])
+```
+
+2. **Start full supervision tree in tests:**
+```elixir
+# In test setup
+{:ok, _} = Application.ensure_all_started(:worth)
+```
+
+3. **Make test conditional:** Skip this test when Brain isn't started (if that's the expected test behavior).
+
+### 4. LLM Config Validation Warnings
+
+**Issue:** Tests emit warnings about invalid NimbleOptions schema:
+```
+Failed to validate LLM config: invalid NimbleOptions schema. 
+Reason: invalid value for :type option: unknown type {:map, :string}.
+```
+
+**Location:** Likely in `Worth.Config` or `AgentEx.Config` schema definitions.
+
+**Fix:** Update the NimbleOptions schema to use valid type definitions:
+```elixir
+# Invalid:
+type: {:map, :string}
+
+# Valid alternatives:
+type: :map
+type: {:map, :string, :string}  # if supported
+# Or define a custom type
+```
+
+### 5. Mneme Pipeline Embedder Async Sandbox Issues
+
+**Related to existing backlog item above** - `embed_entry_async` spawns tasks that can't access the Ecto sandbox connection in tests. This causes `DBConnection.OwnershipError` warnings and embeddings are dropped.
+
+**Location:** `Mneme.Pipeline.Embedder.embed_entry_async/1`
+
+**Status:** Already documented in backlog under "Async ownership warnings in Mneme.Pipeline.Embedder" - fix that item and this will be resolved.
+
 ## Future iterations (deferred from the plan)
 
 These are explicitly out of scope for the current iteration but documented here so they don't get forgotten:
