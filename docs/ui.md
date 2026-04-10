@@ -1,81 +1,48 @@
-# UI Design (TermUI)
+# UI Design (Phoenix LiveView)
 
 ## Layout
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  worth ▸ my-project                      [mode: code]   │
-├────────────────────────────────────┬─────────────────────┤
-│                                    │  Workspace          │
-│  Chat                              │  ┌───────────────┐  │
-│                                    │  │ IDENTITY.md   │  │
-│  > help me refactor the auth       │  │ AGENTS.md     │  │
-│    module                          │  │ skills/       │  │
-│                                    │  └───────────────┘  │
-│  I'll start by reading the current │                     │
-│  auth module to understand the     │  Tools (active)     │
-│  structure...                      │  ┌───────────────┐  │
-│                                    │  │ read_file     │  │
-│  ┌ read_file: lib/auth.ex ────────┐│  │ write_file    │  │
-│  │  defmodule MyApp.Auth do       ││  │ edit_file     │  │
-│  │    def authenticate(user) do   ││  │ bash          │  │
-│  │      ...                       ││  │ list_files    │  │
-│  └────────────────────────────────┘│  │ memory_query  │  │
-│                                    │  └───────────────┘  │
-│  Now I'll refactor the module to   │                     │
-│  extract the token validation...   │  Status             │
-│                                    │  Cost: $0.042      │
-│  ┌ edit_file: lib/auth.ex ────────┐│  Turns: 5/50       │
-│  │  ✓ Applied 3 edits             │  Model: claude-4   │
-│  └────────────────────────────────┘│                     │
-│                                    │                     │
-├────────────────────────────────────┴─────────────────────┤
-│  > type a message... /help for commands                  │
-└──────────────────────────────────────────────────────────┘
-```
+Worth's UI is a Phoenix LiveView web application served by Bandit HTTP server at
+`http://localhost:4000` by default. The CLI opens the browser automatically on
+startup.
 
-## Elm Architecture
+The main view is `WorthWeb.ChatLive` (`lib/worth_web/live/chat_live.ex`).
+
+## Component Architecture
 
 ```
-Worth.UI.Root
-├── Worth.UI.Header          (workspace name, mode indicator, status)
-├── Worth.UI.Body (SplitPane)
-│   ├── Worth.UI.Chat        (main conversation, scrollable Viewport)
-│   │   ├── MessageBlock     (assistant text, markdown rendered)
-│   │   ├── ToolCallBlock    (collapsible tool call + result)
-│   │   └── ThinkingBlock    (optional: streaming thinking tokens)
-│   └── Worth.UI.Sidebar (Tabs)
-│       ├── WorkspaceTab     (file tree, identity files)
-│       ├── ToolsTab         (active tools, tool history)
-│       ├── SkillsTab        (installed + learned skills with trust badges)
-│       └── StatusTab        (cost, tokens, model, plan progress, MCP status)
-└── Worth.UI.Input           (TextInput, command palette with /)
+WorthWeb.ChatLive                (main LiveView, ~1142 lines)
+├── WorthWeb.ChatComponents       (chat message rendering, tool traces)
+├── WorthWeb.CoreComponents       (shared UI primitives)
+├── WorthWeb.Layouts.Root         (root HTML layout)
+├── WorthWeb.CommandHandler       (slash command dispatcher)
+├── WorthWeb.Commands.SystemCommands  (/help, /clear, /cost, /compact, /mode, /quit)
+├── WorthWeb.Commands.WorkspaceCommands  (/workspace list, switch, new)
+├── WorthWeb.Commands.SessionCommands   (/session list, resume)
+├── WorthWeb.Commands.SkillCommands     (/skill list, read, remove, review, revert, export)
+├── WorthWeb.Commands.KitCommands       (/kit search, install, list, info, publish)
+├── WorthWeb.Commands.MemoryCommands    (/memory query, note, recent)
+├── WorthWeb.Commands.McpCommands       (/mcp list, add, remove, connect, disconnect, tools, status)
+└── WorthWeb.ThemeHelper         (color/1 function for theme system)
 ```
 
 ## Key UI Components
 
-| Component | TermUI Widget | Behavior |
-|-----------|--------------|----------|
-| Chat area | `Viewport` | Auto-scroll, virtual scrolling |
-| Input | `TextInput` | Single-line, history (up arrow), `/` command prefix |
-| Sidebar | `Tabs` | Switchable panels |
-| File tree | `TreeView` | Workspace file listing |
-| Tool trace | `Collapsible` in Viewport | Expandable tool call/result blocks |
-| Status bar | `Gauge` + `Text` | Cost tracking, turn counter, model name |
-| Command palette | `CommandPalette` | Fuzzy search over `/` commands |
-| Toast | `Toast` | Non-blocking notifications |
-| Progress | `Gauge` | Plan step completion |
+| Component | LiveView/Phoenix | Behavior |
+|-----------|-----------------|----------|
+| Chat area | `WorthWeb.ChatLive` | Message list, streaming responses, markdown |
+| Input | `<.form>` + `phx-submit` | Text input with `/` command prefix |
+| Sidebar | HEEx template sections | Workspace info, tools, status |
+| Tool trace | Collapsible HEEx blocks | Expandable tool call/result blocks |
+| Status display | Assigns + `assigns/3` | Cost tracking, turn counter, model name |
 
 ## Event Flow
 
 ```
-User types message
+User types message in browser
     │
     ▼
-Worth.UI.Input → {:msg, {:user_input, text}}
-    │
-    ▼
-Worth.UI.Root.update/2 → Worth.Brain.send_message(text)
+Phoenix LiveView `handle_event("send_message", ...)` → Worth.Brain.send_message(text, workspace)
     │
     ▼
 Worth.Brain (GenServer) → AgentEx.run/1
@@ -85,19 +52,18 @@ Worth.Brain (GenServer) → AgentEx.run/1
     │  - {:tool_call, %{name: "read_file", input: %{...}}}
     │  - {:tool_result, %{name: "read_file", output: "..."}}
     │  - {:status, :idle | :running | :error}
-    │  - {:cost, 0.042}
     │  - {:done, %{text: "...", cost: 0.042, tokens: %{...}}}
     │
     ▼
-Brain sends cast to UI process: Worth.UI.Root.handle_agent_event(event)
+Brain broadcasts to Worth.PubSub → ChatLive.handle_info({:agent_event, event})
     │
     ▼
-UI updates state, TermUI re-renders differential
+LiveView updates assigns, Phoenix pushes diff to browser
 ```
 
 Communication:
-- **UI → Brain**: `GenServer.call(Worth.Brain, {:send_message, text})` (synchronous)
-- **Brain → UI**: `send(ui_pid, {:agent_event, event})` (async streaming)
+- **UI → Brain**: `GenServer.call(Worth.Brain.via(workspace), {:send_message, text})` (synchronous)
+- **Brain → UI**: `Phoenix.PubSub.broadcast(Worth.PubSub, ...)` (async streaming via PubSub)
 
 ## Slash Commands
 

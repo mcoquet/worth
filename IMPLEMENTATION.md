@@ -20,7 +20,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | [skills.md](docs/skills.md) | Agent Skills standard, self-learning lifecycle, trust levels |
 | [kits.md](docs/kits.md) | JourneyKits integration: workflow registry, install, publish |
 | [mcp.md](docs/mcp.md) | MCP integration: broker, tools, resources, config |
-| [ui.md](docs/ui.md) | TermUI layout, Elm components, events, slash commands |
+| [ui.md](docs/ui.md) | Phoenix LiveView layout, components, events, slash commands |
 | [tools.md](docs/tools.md) | Tool registry: builtin, memory, skill, gateway, MCP |
 | [config.md](docs/config.md) | File layout, config schema, workspace config |
 | [project-structure.md](docs/project-structure.md) | Source code layout, module responsibilities |
@@ -44,9 +44,9 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Application` -- supervision tree | Done | `lib/worth/application.ex` |
 | `Worth.Config` -- runtime config loading | Done | `lib/worth/config.ex` |
 | `Worth.Repo` -- Ecto Repo for Mneme | Done | `lib/worth/repo.ex` |
-| `Worth.UI.Root` -- Elm Architecture TUI component | Done | `lib/worth/ui/root.ex` |
+| `Worth.UI.Commands` -- pure command parser (used by LiveView) | Done | `lib/worth/ui/commands.ex` |
 | `Worth.Brain` -- GenServer, AgentEx integration | Done | `lib/worth/brain.ex`, `lib/worth/brain/supervisor.ex` |
-| `Worth.LLM` -- multi-provider adapter (Anthropic, OpenAI, OpenRouter) | Done | `lib/worth/llm.ex`, `lib/worth/llm/*.ex` |
+| `Worth.LLM` -- multi-provider dispatch (Anthropic, OpenAI, OpenRouter, Groq) | Done | `lib/worth/llm.ex` |
 | `Worth.CLI` -- CLI entry point | Done | `lib/worth/cli.ex` |
 | `Worth.Telemetry` -- telemetry span helper | Done | `lib/worth/telemetry.ex` |
 | `Worth.Error` -- structured error type | Done | `lib/worth/error.ex` |
@@ -59,13 +59,13 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 **Key decisions made during implementation:**
 
-1. **TermUI API**: Uses `use TermUI.Elm` with `init/1`, `event_to_msg/2`, `update/2`, `view/1` callbacks. Rendering uses `text/2`, `box/2`, `stack/2` (imported from `TermUI.Component.Helpers`). Styles built with `Style.from/1` (not `Style.new/1`). App started via `TermUI.Runtime.run(root: module)`.
+1. **Phoenix LiveView UI**: Uses `Phoenix.LiveView` with `mount/3`, `handle_event/3`, `handle_info/2` callbacks. The main view is `WorthWeb.ChatLive`. Templates use HEEx with `~H` sigils. App served via Bandit HTTP server, browser opens automatically on startup.
 
 2. **mneme dependency override**: mneme is a path dep for worth but a git dep for agent_ex. Added `override: true` in worth's mix.exs to resolve the conflict.
 
-3. **Brain async execution**: Brain delegates AgentEx.run to Task.Supervisor to keep the GenServer responsive. Agent events flow back via `send/2` to the UI process.
+3. **Brain async execution**: Brain delegates AgentEx.run to Task.Supervisor to keep the GenServer responsive. Agent events flow back via `Phoenix.PubSub.broadcast/3`.
 
-4. **Polling for events**: The UI polls for brain events every 100ms via `Command.interval/2`, using a non-blocking `receive after 0` pattern. This avoids needing a direct PID coupling between Brain and UI.
+4. **PubSub event streaming**: The LiveView subscribes to `Worth.PubSub` for brain events. The Brain broadcasts via `Phoenix.PubSub.broadcast/3`. Events are handled in `ChatLive.handle_info/2`.
 
 ### Phase 2: Workspaces & File Tools -- COMPLETE
 
@@ -84,11 +84,11 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Tools.Git` -- git_diff, git_log, git_status | Done | `lib/worth/tools/git.ex` |
 | `Worth.Tools.Workspace` -- workspace_status, workspace_list, workspace_switch | Done | `lib/worth/tools/workspace.ex` |
 | `Worth.Persistence.Transcript` -- JSONL append per turn | Done | `lib/worth/persistence/transcript.ex` |
-| UI: tool call/result rendering (blue >> tool, magenta << result) | Done | `lib/worth/ui/root.ex` (message_to_nodes) |
-| UI: sidebar with workspace/tools/status tabs (Tab to toggle) | Done | `lib/worth/ui/root.ex` (render_sidebar) |
-| UI: command history (Up/Down arrows) | Done | `lib/worth/ui/root.ex` (history_prev/next) |
-| UI: header with mode indicator, turn counter, cost | Done | `lib/worth/ui/root.ex` (render_header) |
-| Slash commands: /mode, /workspace list/switch/new, /status | Done | `lib/worth/ui/root.ex` (parse_command) |
+| UI: tool call/result rendering (blue >> tool, magenta << result) | Done | `lib/worth_web/live/chat_live.ex` (process_event) |
+| UI: sidebar with workspace/tools/status tabs | Done | `lib/worth_web/live/chat_live.ex` |
+| UI: command history (Up/Down arrows) | Done | `lib/worth_web/live/chat_live.ex` |
+| UI: header with mode indicator, turn counter, cost | Done | `lib/worth_web/components/chat_components.ex` |
+| Slash commands: /mode, /workspace list/switch/new, /status | Done | `lib/worth_web/live/commands/*.ex` |
 | CLI: --mode flag, --init flag | Done | `lib/worth/cli.ex` |
 | Tests: workspace service, brain switching | Done | `test/worth/workspace_test.exs`, `test/worth/brain_test.exs` |
 
@@ -121,7 +121,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | Workspace deactivation flush: WorkingMemory -> global Mneme | Done | `lib/worth/brain.ex` (switch_workspace, flush_working_memory) |
 | `Worth.Tools.Memory` -- memory_query, memory_write, memory_note, memory_recall | Done | `lib/worth/tools/memory.ex` |
 | Wire memory tools into Brain execute_external_tool/search_tools/get_tool_schema | Done | `lib/worth/brain.ex` (build_callbacks) |
-| `/memory query`, `/memory note`, `/memory recent` slash commands | Done | `lib/worth/ui/root.ex` (parse_command, update) |
+| `/memory query`, `/memory note`, `/memory recent` slash commands | Done | `lib/worth_web/live/commands/memory_commands.ex` |
 | Outcome feedback: good/bad signals after successful/failed agent turns | Done | `lib/worth/brain.ex` (store_outcome_feedback) |
 | User message pushed to working memory on each turn | Done | `lib/worth/brain.ex` (execute_agent_loop) |
 | Worth.Config added to supervision tree (was missing) | Done | `lib/worth/application.ex` |
@@ -160,7 +160,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Tools.Skills` -- skill_list, skill_read, skill_install, skill_remove, skill_create | Done | `lib/worth/tools/skills.ex` |
 | Wire skill tools into Brain (search_tools, execute_external_tool, get_tool_schema) | Done | `lib/worth/brain.ex` |
 | Integrate skills into system prompt (L1 metadata via Registry.metadata_for_prompt) | Done | `lib/worth/workspace/context.ex` |
-| `/skill list`, `/skill read`, `/skill remove` slash commands | Done | `lib/worth/ui/root.ex` |
+| `/skill list`, `/skill read`, `/skill remove` slash commands | Done | `lib/worth_web/live/commands/skill_commands.ex` |
 | Skill registry initialized on app startup | Done | `lib/worth/application.ex` |
 | Tests: Parser, Validator, Trust, Tools.Skills | Done | `test/worth/skills/`, `test/worth/tools/skills_test.exs` |
 
@@ -184,17 +184,17 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 |------|--------|-------|
 | `Worth.Skill.Refiner` -- reactive refinement (analyze failures, update skills) + proactive review | Done | `lib/worth/skills/refiner.ex` |
 | `Worth.Skill.Versioner` -- version management, rollback, history | Done | `lib/worth/skills/versioner.ex` |
-| Tier routing -- primary/lightweight via `AgentEx.ModelRouter`, dispatched in `Worth.LLM.chat/2` | Done | `lib/worth/llm.ex` |
-| `Worth.UI.Theme` -- configurable dark/light/minimal themes with style_for | Done | `lib/worth/ui/theme.ex` |
+| `Worth.LLM` -- multi-provider dispatch (streaming + chat_tier) | Done | `lib/worth/llm.ex` |
+| `Worth.Theme` -- configurable themes with Worth.Theme behaviour | Done | `lib/worth/theme/*.ex` |
 | `Worth.Brain.Session` -- session resumption via AgentEx.resume/1 | Done | `lib/worth/brain/session.ex` |
 | Wire Refiner into Brain (skill failure -> reactive refinement, proactive review after turns) | Done | `lib/worth/brain.ex` |
-| Wire Versioner into Brain (skill_history, skill_rollback) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth/ui/root.ex` |
-| Wire Session into Brain (resume_session, list_sessions) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth/ui/root.ex` |
-| Theme integration in UI rendering (header, messages, tool calls, thinking) | Done | `lib/worth/ui/root.ex` |
+| Wire Versioner into Brain (skill_history, skill_rollback) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth_web/live/commands/skill_commands.ex` |
+| Wire Session into Brain (resume_session, list_sessions) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth_web/live/commands/session_commands.ex` |
+| Theme integration in UI rendering (header, messages, tool calls, thinking) | Done | `lib/worth_web/components/*.ex` |
 | Cost limit enforcement (warns on cost events, checks against config limit) | Done | `lib/worth/brain.ex` |
 | Memory-skill provenance (Mneme entries tagged with skill via metadata) | Done | `lib/worth/memory/manager.ex` |
 | Fix compile errors (refiner missing end, adapter_for private, Style module, Transcript arity) | Done | Multiple files |
-| UI commands: /skill history, /skill rollback, /skill refine, /session list, /session resume | Done | `lib/worth/ui/root.ex` |
+| UI commands: /skill history, /skill rollback, /skill refine, /session list, /session resume | Done | `lib/worth_web/live/commands/*.ex` |
 | `Worth.LLM.adapter_for/1` made public for Router access | Done | `lib/worth/llm.ex` |
 | `Worth.Persistence.Transcript.list_sessions/2` arity fix per behaviour | Done | `lib/worth/persistence/transcript.ex` |
 | Tests: Refiner, Versioner, Theme | Done | `test/worth/skills/refiner_test.exs`, `test/worth/skills/versioner_test.exs`, `test/worth/ui/theme_test.exs` |
@@ -205,7 +205,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 2. **Cost limit enforcement**: The `handle_info({:agent_event, {:cost, amount}}` handler checks cumulative cost against `config[:cost_limit]` (default $5.0). When exceeded, an error event is sent to the UI. The actual abort is handled by AgentEx's built-in `cost_limit` option.
 
-3. **Theme system**: `Worth.UI.Theme` provides `style_for/1` and `status_indicator/1` used throughout the UI. Three presets (dark, light, minimal) override the default theme. Theme selection via `Worth.Config.get([:ui, :theme])`.
+3. **Theme system**: `Worth.Theme` modules implement the `Worth.Theme` behaviour, providing `colors/0` and optional `css/0`. Three presets (Standard, Cyberdeck, Fifth Element). Theme selection stored in encrypted settings (`Worth.Settings`) and resolved via `Worth.Theme.Registry`.
 
 4. **Session resumption**: `Worth.Brain.Session.resume/4` builds callbacks matching the main Brain's callback structure and calls `AgentEx.resume/1` with transcript backend. The `/session list` command reads from `Worth.Persistence.Transcript`.
 
@@ -233,7 +233,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Tools.Mcp` -- 5 tools: mcp_list_servers, mcp_server_tools, mcp_call_tool, mcp_connect, mcp_disconnect | Done | `lib/worth/tools/mcp.ex` |
 | Wire MCP tools into Brain (execute_external_tool, search_tools, get_tool_schema) | Done | `lib/worth/brain.ex` |
 | Namespaced tool execution: `server:tool_name` resolves via ToolIndex | Done | `lib/worth/brain.ex` |
-| UI commands: /mcp list, /mcp connect, /mcp disconnect, /mcp tools | Done | `lib/worth/ui/root.ex` |
+| UI commands: /mcp list, /mcp connect, /mcp disconnect, /mcp tools | Done | `lib/worth_web/live/commands/mcp_commands.ex` |
 | MCP Broker + ConnectionMonitor added to supervision tree | Done | `lib/worth/application.ex` |
 | Autoconnect on startup (servers with autoconnect: true) | Done | `lib/worth/application.ex` |
 | Tests: Config, Registry, ToolIndex, Tools.Mcp | Done | `test/worth/mcp/`, `test/worth/tools/mcp_test.exs` |
@@ -263,7 +263,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Kits` -- JourneyKits search/install/publish REST client | Done | `lib/worth/kits.ex` |
 | `Worth.Tools.Kits` -- 5 tools: kit_search, kit_install, kit_list, kit_info, kit_publish | Done | `lib/worth/tools/kits.ex` |
 | Wire Kits into Brain (execute_external_tool, search_tools, get_tool_schema) | Done | `lib/worth/brain.ex` |
-| UI commands: /kit search, /kit install, /kit list, /kit info | Done | `lib/worth/ui/root.ex` |
+| UI commands: /kit search, /kit install, /kit list, /kit info | Done | `lib/worth_web/live/commands/kit_commands.ex` |
 | Kit installation tracking in ~/.worth/installed_kits.json | Done | `lib/worth/kits.ex` |
 | Kit skill extraction with :kit provenance into global skills directory | Done | `lib/worth/kits.ex` |
 | Tests: Kits, Tools.Kits | Done | `test/worth/kits/`, `test/worth/tools/kits_test.exs` |

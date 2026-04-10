@@ -1,8 +1,10 @@
 # UI Enhancement Plan — amux-Inspired Redesign
 
-Comprehensive plan to rebuild Worth's TUI with richer visuals, a workspace file
-browser, and a live agent/subagent status panel.  Inspired by
-[amux](https://github.com/andyrewlee/amux) (multi-agent terminal dashboard).
+> **Note:** This plan was written for the old TermUI-based TUI. The UI has since
+> been replaced by a Phoenix LiveView web application. The design goals and visual
+> concepts remain valid but implementation details reference deleted modules
+> (`Worth.UI.Root`, `Worth.UI.Header`, etc.). See `docs/ui.md` for the current
+> architecture.
 
 ---
 

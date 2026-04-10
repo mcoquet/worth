@@ -38,8 +38,8 @@ test/
 │   ├── data_case.ex                # Ecto case with sandboxed repo
 │   ├── brain_case.ex               # Test brain with fake LLM
 │   └── mcp_case.ex                 # Test MCP server stub
-└── ui/
-    └── root_test.exs               # TermUI component tests
+└── web/
+    └── chat_live_test.exs            # LiveView component tests
 ```
 
 ## Testing Patterns

@@ -1,8 +1,15 @@
 # TUI Redesign Proposal
 
+> **Note:** This proposal was written for the old TermUI-based TUI. The UI has
+> since been replaced by a Phoenix LiveView web application. The design goals
+> (information density, visual hierarchy, streaming clarity) remain valid but
+> implementation details reference deleted modules. See `docs/ui.md` for the
+> current architecture.
+
 ## Overview
 
-A redesign of the Worth TUI inspired by modern, visually polished terminal interfaces like Lazygit, k9s, amux, and the Charmbracelet ecosystem.
+A redesign of the Worth UI inspired by modern, visually polished interfaces like
+Lazygit, k9s, amux, and the Charmbracelet ecosystem.
 
 ## Goals
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Worth is a terminal-based AI assistant built on Elixir/BEAM. It is a single OTP application that wraps an agent loop, a TUI, persistent memory, a self-learning skill system, and MCP client/server integration.
+Worth is an AI assistant built on Elixir/BEAM with a Phoenix LiveView web UI. It is a single OTP application that wraps an agent loop, persistent memory, a self-learning skill system, and MCP client/server integration.
 
 ## Common commands
 
@@ -16,10 +16,10 @@ mix test path/to/file_test.exs:LINE       # single test
 mix compile
 mix credo              # lint
 mix dialyzer           # type check
-mix run --no-halt                         # start TUI (default workspace, code mode)
+mix run --no-halt                         # start web UI (default workspace, code mode)
 mix run --no-halt -- -w NAME -m MODE      # workspace + mode (code|research|planned|turn_by_turn)
 mix run --no-halt -- --init NAME          # scaffold a workspace and exit
-mix worth                                 # alias for the TUI launcher
+mix worth                                 # alias for the web UI launcher
 ```
 
 Database: PostgreSQL **with the pgvector extension** is required (used by Mneme for vector search). Tests automatically run `ecto.create --quiet && ecto.migrate --quiet` before executing (see `mix.exs` aliases).
@@ -30,7 +30,7 @@ Two unusual deps live as **path dependencies** outside this repo and must exist 
 
 ## Architecture
 
-The system is organized around a single coordinator GenServer (`Worth.Brain`) that owns one agent session at a time and dispatches into subsystem services. The TUI is a separate process tree that talks to the Brain over message passing.
+The system is organized around per-workspace GenServers (`Worth.Brain`) that each own one agent session at a time and dispatch into subsystem services. The web UI is a Phoenix LiveView application (`WorthWeb.ChatLive`) that communicates with the Brain via PubSub events and GenServer calls.
 
 ### Supervision tree
 
@@ -40,12 +40,13 @@ The system is organized around a single coordinator GenServer (`Worth.Brain`) th
 3. `Phoenix.PubSub` (`Worth.PubSub`) and `Worth.Registry`
 4. `Worth.TaskSupervisor`, `Worth.Telemetry`
 5. `Worth.Mcp.Broker` (DynamicSupervisor for MCP server connections) and `Worth.Mcp.ConnectionMonitor`
-6. `Worth.Brain.Supervisor`
-7. After boot: async `Worth.Skill.Registry.init/0` and `Worth.Mcp.Broker.connect_auto/0` via a `SkillInit` task supervisor
+  6. `Worth.Brain.Supervisor`
+  7. `WorthWeb.Endpoint` (Bandit HTTP server for LiveView web UI)
+  8. After boot: async `Worth.Skill.Registry.init/0` and `Worth.Mcp.Broker.connect_auto/0` via a `SkillInit` task supervisor
 
 ### Brain → agent loop
 
-`Worth.Brain` (lib/worth/brain.ex) is a named GenServer holding `current_workspace`, `session_id`, `history`, `mode`, `tool_permissions`, `pending_approval`, etc. It exposes a sync API (`send_message/1`, `approve_tool/1`, `switch_mode/1`, `switch_workspace/1`, `resume_session/1`, …) that the UI and slash commands call. Each turn invokes `AgentEx.run/1` which iterates LLM ↔ tool calls. Tool permissions are per-tool `:auto` or `:approve` (see `@default_tool_permissions`); approval-gated tools park in `pending_approval` until the UI calls `approve_tool/deny_tool`.
+`Worth.Brain` (lib/worth/brain.ex) is a per-workspace GenServer registered via `{:via, Registry, {Worth.Registry, {:brain, workspace}}}`. It holds `current_workspace`, `session_id`, `history`, `mode`, `tool_permissions`, `active_tools`, etc. It exposes a sync API (`send_message/2`, `get_status/1`, `switch_mode/2`, `switch_workspace/2`, `resume_session/2`, …) that takes a `workspace` argument. Each turn invokes `AgentEx.run/1` which iterates LLM ↔ tool calls. Tool permissions are per-tool `:auto` or `:approve` (see `@default_tool_permissions`); approval-gated tools park in `pending_approval` until the UI calls `approve_tool/deny_tool`.
 
 Modes (code, research, planned, turn_by_turn) change the agent's prompt + autonomy profile, not its toolset.
 
@@ -72,8 +73,9 @@ Modes (code, research, planned, turn_by_turn) change the agent's prompt + autono
 - **lib/worth/workspace/** — Workspace scaffolding and identity-file loading. A workspace is `~/.worth/workspaces/<name>/` with `IDENTITY.md`, `AGENTS.md`, `.worth/skills.json`, `.worth/mcp.json`. The agent re-reads identity files each turn.
 - **lib/worth/kits/** — JourneyKits search/install/publish. Installing a kit drops skills into `~/.worth/skills/` and source files into the workspace.
 - **lib/worth/persistence/** — JSONL transcript backend for sessions (resume via `/session resume <id>`).
-- **lib/worth/ui/** — `Worth.UI.Root` is a `TermUI` Elm-architecture root. It subscribes to PubSub for streaming responses, tool traces, and approval prompts from the Brain. `Theme` defines color palettes.
-- **lib/worth/cli.ex** — CLI option parsing for `mix run --no-halt -- …` and `mix worth`. Handles `--init`, `--workspace`, `--mode`. Ends by calling `TermUI.Runtime.run(root: Worth.UI.Root, …)`.
+- **lib/worth/ui/** — `Worth.UI.Commands` is a pure command parser used by the LiveView. The old TermUI TUI was replaced by Phoenix LiveView.
+- **lib/worth_web/** — Phoenix LiveView web UI. `WorthWeb.ChatLive` is the main LiveView (1142 lines). `WorthWeb.Router` serves the app via Bandit HTTP server. Components live in `lib/worth_web/components/` and command handlers in `lib/worth_web/live/commands/`.
+- **lib/worth/cli.ex** — CLI option parsing for `mix run --no-halt -- …` and `mix worth`. Handles `--init`, `--workspace`, `--mode`. Starts the Brain and opens the web UI in the browser.
 - **lib/mix/tasks/worth.ex** — `mix worth` Mix task that boots the app and delegates to `Worth.CLI.main/1`.
 
 ### Configuration
@@ -82,7 +84,7 @@ Modes (code, research, planned, turn_by_turn) change the agent's prompt + autono
 
 ## Conventions worth knowing
 
-- The TUI and the Brain are decoupled — never call UI code from Brain handlers; emit via PubSub or send to `state.ui_pid`.
+- The UI and the Brain are decoupled — never call UI code from Brain handlers; emit via PubSub. The LiveView subscribes to Brain events and renders them.
 - MCP tools must always be referenced with their `server:tool` namespace inside `ToolIndex` and the gateway.
 - Skill mutations should go through `Worth.Skill.Service` (not `Registry` directly) so versioning, validation, and the in-memory index stay coherent.
 - Memory writes go through `Worth.Memory.Manager` so fact extraction, embedding, and confidence decay are applied consistently.

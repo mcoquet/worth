@@ -43,7 +43,7 @@ Worth.Application
 ├── Worth.Skills.Registry               (ETS + :persistent_term)
 │   Skill metadata cache (L1: name+description for system prompt)
 │
-└── Worth.UI.Root                       (term_ui process)
+└── WorthWeb.Endpoint                    (Bandit HTTP server for LiveView)
 ```
 
 ### Why rest_for_one for Brain
@@ -111,7 +111,7 @@ The tool index maps `server_name:tool_name` to `{server_name, client_pid}`. Upda
 
 ### ETS for Cost Tracking
 
-Cost accumulates every turn but the UI reads it at 60fps. A GenServer would be a bottleneck. ETS with `:read_concurrency` lets the UI read without contending with writes:
+Cost accumulates every turn but the LiveView reads it on each render. A GenServer would be a bottleneck. ETS with `:read_concurrency` lets the UI read without contending with writes:
 
 ```elixir
 :ets.update_counter(:worth_cost, :total_usd, current_cost)
@@ -170,7 +170,7 @@ end
 
 ### Metrics Reporter
 
-Uses `telemetry_metrics` + `telemetry_metrics_prometheus` (or a simple console reporter for the TUI):
+Uses `telemetry_metrics` + a console reporter for the web UI:
 
 ```elixir
 # In Worth.Application
@@ -186,7 +186,7 @@ Worth.Telemetry.attach_default_handler()
 
 ### Why Telemetry Matters
 
-Without telemetry, we're flying blind. The `[:agent_ex, :llm_call, :stop]` event already carries `duration`, `tokens`, and `cost`. Worth just needs to attach handlers. The UI status bar (cost, turn count, model) reads from telemetry, not from polling the brain.
+Without telemetry, we're flying blind. The `[:agent_ex, :llm_call, :stop]` event already carries `duration`, `tokens`, and `cost`. Worth just needs to attach handlers. The LiveView status display (cost, turn count, model) reads from telemetry, not from polling the brain.
 
 ## PubSub
 
@@ -433,17 +433,7 @@ The `Process.flag(:trap_exit, true)` ensures the application process receives EX
 
 ## Process Discovery
 
-Worth uses `Worth.Registry` (Elixir Registry) for named process lookup instead of passing PIDs through function arguments:
-
-```elixir
-# Instead of:
-send(brain.ui_pid, {:agent_event, event})
-
-# Use:
-Worth.Registry |> Registry.lookup(Worth.UI, :root) |> send({:agent_event, event})
-```
-
-This decouples components. The Brain doesn't need to know the UI's PID -- it looks it up by name. If the UI restarts, the Brain automatically finds the new PID.
+Worth uses `Worth.Registry` (Elixir Registry) for named process lookup instead of passing PIDs through function arguments. The Brain is registered per-workspace via `{:via, Registry, {Worth.Registry, {:brain, workspace}}}`.
 
 For the Brain itself:
 
@@ -496,24 +486,7 @@ This keeps the Brain responsive while MCP servers respond (some take seconds).
 
 ### Debounced Telemetry for UI
 
-The UI renders at 60fps. Telemetry events fire on every text chunk. Batch updates:
-
-```elixir
-# Worth.UI aggregates events over 50ms windows:
-def handle_info({:agent_event, event}, state) do
-  state = buffer_event(state, event)
-  {:noreply, state, {:continue, :maybe_render}}
-end
-
-def handle_continue(:maybe_render, state) do
-  if buffer_full?(state) or buffer_age(state) > 50 do
-    {:noreply, flush_and_render(state)}
-  else
-    Process.send_after(self(), :render_flush, 50)
-    {:noreply, state}
-  end
-end
-```
+The LiveView receives PubSub events from the Brain. Telemetry events fire on every text chunk. The LiveView processes them via `handle_info/2` and pushes diffs to the browser.
 
 ## Brain Architecture (Revised)
 

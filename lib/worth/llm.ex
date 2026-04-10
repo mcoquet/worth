@@ -45,8 +45,7 @@ defmodule Worth.LLM do
     case provider_for_route(name) do
       {:ok, provider_module} ->
         opts = [model: route.model_id, on_chunk: on_chunk]
-        result = AgentEx.LLM.Provider.stream_chat(provider_module, strip_route(params), opts)
-        project_result(result)
+        AgentEx.LLM.Provider.stream_chat(provider_module, strip_route(params), opts)
 
       :error ->
         {:error,
@@ -65,8 +64,7 @@ defmodule Worth.LLM do
       get_in(config, [:llm, :providers, provider, :default_model]) ||
         default_model_for(provider_module)
 
-    result = AgentEx.LLM.Provider.stream_chat(provider_module, params, model: model, on_chunk: on_chunk)
-    project_result(result)
+    AgentEx.LLM.Provider.stream_chat(provider_module, params, model: model, on_chunk: on_chunk)
   end
 
   # ----- chat/2: single dispatch -----
@@ -217,8 +215,7 @@ defmodule Worth.LLM do
     case provider_for_route(name) do
       {:ok, provider_module} ->
         opts = [model: route.model_id]
-        result = AgentEx.LLM.Provider.chat(provider_module, strip_route(params), opts)
-        project_result(result)
+        AgentEx.LLM.Provider.chat(provider_module, strip_route(params), opts)
 
       :error ->
         {:error,
@@ -252,8 +249,7 @@ defmodule Worth.LLM do
       get_in(config, [:llm, :providers, provider, :default_model]) ||
         default_model_for(provider_module)
 
-    result = AgentEx.LLM.Provider.chat(provider_module, params, model: model)
-    project_result(result)
+    AgentEx.LLM.Provider.chat(provider_module, params, model: model)
   end
 
   defp provider_module_for(provider) do
@@ -279,38 +275,4 @@ defmodule Worth.LLM do
       model -> model.id
     end
   end
-
-  # Project %Response{} back into the legacy map shape that the agent_ex
-  # loop still consumes. This shim goes away once ModeRouter reads the
-  # struct directly.
-  defp project_result({:ok, %AgentEx.LLM.Response{} = r}) do
-    {:ok,
-     %{
-       "content" => Enum.map(r.content, &project_block/1),
-       "stop_reason" => r.stop_reason,
-       "usage" => %{
-         "input_tokens" => r.usage.input_tokens,
-         "output_tokens" => r.usage.output_tokens,
-         "cache_read_input_tokens" => r.usage.cache_read,
-         "cache_creation_input_tokens" => r.usage.cache_write
-       },
-       "model" => r.model_id
-     }}
-  end
-
-  defp project_result({:error, %AgentEx.LLM.Error{} = e}) do
-    {:error, e}
-  end
-
-  defp project_result(other), do: other
-
-  defp project_block(%{type: :text, text: text}) do
-    %{"type" => "text", "text" => text}
-  end
-
-  defp project_block(%{type: :tool_use, id: id, name: name, input: input}) do
-    %{"type" => "tool_use", "id" => id, "name" => name, "input" => input}
-  end
-
-  defp project_block(other), do: other
 end

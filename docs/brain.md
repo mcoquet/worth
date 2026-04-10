@@ -2,7 +2,7 @@
 
 ## Worth.Brain GenServer
 
-The brain is a single GenServer that owns the agent loop. It is the integration point between term_ui (events in, render updates out) and agent_ex (execution).
+The brain is a per-workspace GenServer that owns the agent loop. It is the integration point between the Phoenix LiveView web UI (events in, PubSub out) and agent_ex (execution).
 
 ```elixir
 defmodule Worth.Brain do
@@ -33,7 +33,7 @@ callbacks = %{
   end,
 
   on_event: fn event, ctx ->
-    send(brain.ui_pid, {:agent_event, event})
+    Phoenix.PubSub.broadcast(Worth.PubSub, "worth:brain:#{ctx.workspace}", {:agent_event, event})
   end,
 
   # Global memory (unified model)
@@ -67,11 +67,11 @@ callbacks = %{
   end,
 
   on_tool_approval: fn name, input, ctx ->
-    Worth.UI.request_approval(brain.ui_pid, name, input)
+    Worth.Web.ApprovalHandler.request_approval(ctx.workspace, name, input)
   end,
 
   on_human_input: fn proposal, ctx ->
-    Worth.UI.request_human_input(brain.ui_pid, proposal)
+    Worth.Web.ApprovalHandler.request_human_input(ctx.workspace, proposal)
   end,
 
   on_persist_turn: fn ctx, text ->
@@ -136,13 +136,10 @@ The Worth.LLM module wraps provider adapters (Anthropic, OpenAI, OpenRouter) and
 ## Event Flow
 
 ```
-User types message
+User types message in browser
     │
     ▼
-Worth.UI.Input → {:msg, {:user_input, text}}
-    │
-    ▼
-Worth.UI.Root.update/2 → Worth.Brain.send_message(text)
+Phoenix LiveView handle_event → Worth.Brain.send_message(text, workspace)
     │
     ▼
 Worth.Brain (GenServer) → AgentEx.run/1
@@ -153,16 +150,15 @@ Worth.Brain (GenServer) → AgentEx.run/1
     │  - {:tool_result, %{name: "read_file", output: "..."}}
     │  - {:thinking_chunk, "..."}
     │  - {:status, :idle | :running | :error}
-    │  - {:cost, 0.042}
     │  - {:done, %{text: "...", cost: 0.042, tokens: %{...}}}
     │
     ▼
-Brain sends cast to UI process: Worth.UI.Root.handle_agent_event(event)
+Brain broadcasts to PubSub → ChatLive.handle_info({:agent_event, event})
     │
     ▼
-UI updates state, TermUI re-renders differential
+LiveView updates assigns, Phoenix pushes diff to browser
 ```
 
 The Brain and UI communicate via:
-- **UI → Brain**: `GenServer.call(Worth.Brain, {:send_message, text})` (synchronous)
-- **Brain → UI**: `send(ui_pid, {:agent_event, event})` (async streaming)
+- **UI → Brain**: `GenServer.call(Worth.Brain.via(workspace), {:send_message, text})` (synchronous)
+- **Brain → UI**: `Phoenix.PubSub.broadcast(Worth.PubSub, ...)` (async streaming via PubSub)

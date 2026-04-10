@@ -31,7 +31,7 @@ defmodule Worth.Workspace.Identity do
 
   @llm_schema [
     tiers: [
-      type: {:map, :string},
+      type: :map,
       default: %{},
       doc: "Map of tier atom to \"provider/model_id\" string"
     ],

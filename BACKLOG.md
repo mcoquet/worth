@@ -17,10 +17,14 @@ commit. Kept for historical reference._
 
 ## Worth.LLM projection layer retirement
 
-Phase 2 left a projection layer in `worth/lib/worth/llm.ex` that translates `%AgentEx.LLM.Response{}` back into the legacy string-keyed map shape because `AgentEx.Loop.Stages.ModeRouter` historically matched on `response["stop_reason"] == "end_turn"`. Phase 2 fixed ModeRouter to use atom matching but left the projection layer in place to avoid touching every consumer at once.
+_Resolved: projection layer deleted, all consumers migrated to struct field access._
 
-- **`Worth.LLM.project_result/1` / `project_block/1`** can be retired. ModeRouter now handles atoms via `normalize_stop_reason/1`. The agent loop should consume `%Response{}` directly and the legacy map shape can disappear.
-- Once retired, every place that does `response["stop_reason"]` / `response["content"]` / `response["usage"]` needs to switch to struct field access. Scope: `agent_ex/lib/agent_ex/loop/stages/{mode_router,llm_call,transcript_recorder,plan_tracker}.ex` and a few worth-side consumers.
+- ~~**`Worth.LLM.project_result/1` / `project_block/1`**~~ — **deleted** from `worth/lib/worth/llm.ex`. The 4 dispatch paths (`chat_with_route`, `chat_with_configured`, `stream_chat_with_route`, `stream_chat_with_configured`) now return `%AgentEx.LLM.Response{}` directly.
+- ~~Every place that did `response["stop_reason"]` / `response["content"]` / `response["usage"]`~~ — **migrated** to struct field access (`response.stop_reason`, `response.content`, `response.usage`). Scope: `agent_ex/lib/agent_ex/loop/stages/{mode_router,llm_call,transcript_recorder,plan_tracker,commitment_gate}.ex`, `agent_ex/lib/agent_ex/loop/{helpers,context}.ex`, `agent_ex/lib/agent_ex/loop/stages/cli_executor.ex`, `agent_ex/lib/agent_ex/model_router/analyzer.ex`, `agent_ex/lib/agent_ex/memory/{memory_manager,fact_extractor}.ex`.
+- **`AgentEx.LLM.Response` struct** gained a `cost: nil` field so `LLMCall` can set cost without mutating a map.
+- **`Context.last_response`** typed as `Response.t() | nil` (was `map() | nil`).
+- **`Helpers.extract_text/1` and `extract_tool_calls/1`** now use atom keys (`&1.type == :text`) instead of string keys (`&1["type"] == "text"`).
+- **15 test files** updated to use `%AgentEx.LLM.Response{}` fixtures instead of string-keyed maps. All 428 tests pass.
 
 ## Embedding cost telemetry
 
@@ -46,7 +50,7 @@ Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is h
 
 ## Catalog hardening
 
-- **Atomic catalog persistence.** `~/.worth/catalog.json` is rewritten on every refresh via direct `File.write/2`. A crash mid-write corrupts the cache. Fix: write to `catalog.json.tmp` then `File.rename/2`.
+- ~~**Atomic catalog persistence.**~~ — **resolved** (already uses tmp+rename in `AgentEx.LLM.Catalog.save_to_disk/1`).
 - **Schema versioning** is at `v1`. Bump to `v2` whenever the `Model` struct gains/changes a field, and drop the cache on mismatch (already wired, just remember to do it).
 - **Catalog merge conflict logging.** When a user override claims a model has different capabilities than discovery says, log a warning. Currently silent — user wins without comment.
 
@@ -67,9 +71,11 @@ Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is h
 
 ## UI / TUI polish
 
-- **`:usage` sidebar tab is unreachable via number key.** Keymap binds `1`→`:workspace` … `5`→`:logs`. After Phase 5 the tab list is `[:workspace, :tools, :skills, :status, :usage, :logs]` (6 tabs). Number-key handler in `lib/worth/ui/root.ex` `event_to_msg/2` still maps `5`→`:logs`. Either rebind `5`→`:usage` and `6`→`:logs`, or remove number-key handling entirely and rely on left/right arrow tab cycling.
-- **`lib/worth/ui/root.ex` debug `IO.puts`** in the number-key handler (line ~79). User WIP — should be removed before merging that work.
-- **`lib/worth/ui/root.ex` unused `e` variable warning** at line 78. Same WIP. Blocks `mix compile --warnings-as-errors` for worth.
+_The TermUI TUI was replaced by Phoenix LiveView. Items referencing `lib/worth/ui/root.ex` are resolved._
+
+- ~~**`:usage` sidebar tab is unreachable via number key.**~~ — **resolved** (TUI removed, replaced by LiveView).
+- ~~**`lib/worth/ui/root.ex` debug `IO.puts`**~~ — **resolved** (file deleted).
+- ~~**`lib/worth/ui/root.ex` unused `e` variable warning**~~ — **resolved** (file deleted).
 - **`/provider list` output format.** Currently a brief one-liner per provider. The "things to refine" plan section suggests `name | enabled | model count | last refresh | usage status`. Grow when needed.
 
 ## Test infrastructure
@@ -102,7 +108,7 @@ Discovered during the PostgreSQL → libSQL migration implementation. These are 
 
 ### 1. Brain API Function Signature Mismatches
 
-**Issue:** Tests call `Worth.Brain.get_status/0`, `switch_mode/1`, and `switch_workspace/1` but the actual functions are `get_status/1`, `switch_mode/2`, and `switch_workspace/2` (requiring a session/workspace argument).
+**Status:** ~~Fixed~~. Tests updated to pass `workspace` argument to all Brain API calls.
 
 **Affected Tests:**
 - `test/worth/brain_test.exs:5` - `Worth.Brain.get_status()`
@@ -173,7 +179,7 @@ end
 
 ### 4. LLM Config Validation Warnings
 
-**Issue:** Tests emit warnings about invalid NimbleOptions schema:
+**Status:** ~~Fixed~~. Changed `type: {:map, :string}` to `type: :map` in `Worth.Workspace.Identity` NimbleOptions schema.
 ```
 Failed to validate LLM config: invalid NimbleOptions schema. 
 Reason: invalid value for :type option: unknown type {:map, :string}.

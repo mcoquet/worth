@@ -5,17 +5,17 @@
 **Goal:** Worth starts, renders a terminal UI, accepts input, calls an LLM, streams the response back.
 
 Steps:
-1. Mix project setup with agent_ex, term_ui, mneme, hermes_mcp dependencies
+1. Mix project setup with agent_ex, phoenix_live_view, mneme, hermes_mcp dependencies
 2. `Worth.Application` -- supervision tree (Brain, Repo, AgentEx deps, McpRegistry)
 3. `Worth.Config` -- load from `~/.worth/config.exs`
 4. `Worth.Repo` -- Ecto Repo for Mneme, run migrations
-5. `Worth.UI.Root` -- minimal Elm component with TextInput + Viewport
+5. `WorthWeb.ChatLive` -- Phoenix LiveView with chat input + message display
 6. `Worth.Brain` -- GenServer, receive input, call AgentEx.run/1 with `:conversational` profile
-7. `Worth.LLM.Adapter` -- implement `:llm_chat` callback for one provider (Anthropic)
-8. `:on_event` callback -- stream text chunks to UI
+7. `Worth.LLM` -- implement `:llm_chat` callback for one provider (Anthropic)
+8. `:on_event` callback -- stream text chunks to UI via PubSub
 9. Basic rendering: user messages, assistant messages, tool call/result blocks
 
-**Deliverable:** `worth` starts, shows a terminal chat, you type a question, it streams a response.
+**Deliverable:** `worth` starts, shows a web chat in the browser, you type a question, it streams a response.
 
 ## Phase 2: Workspaces & File Tools (Week 2-3)
 
@@ -27,10 +27,10 @@ Steps:
 3. Switch Brain to `:agentic` profile for code workspaces
 4. Register agent_ex's core file tools
 5. `Worth.Workspace.Context` -- system prompt assembly from identity files + global memory
-6. `Worth.UI.Sidebar` -- workspace tab (TreeView), tools tab, skills tab, status tab
-7. `Worth.UI.ToolTrace` -- collapsible tool call/result blocks
+6. `WorthWeb.ChatLive` -- workspace tab, tools tab, skills tab, status sidebar
+7. Tool call/result rendering in LiveView
 8. Tool permission system (`:on_tool_approval` callback)
-9. `Worth.UI.Status` -- cost tracking, turn counter
+9. Status display in LiveView -- cost tracking, turn counter
 
 **Deliverable:** `worth -w my-project` opens in the project directory, agent can read and edit files.
 
@@ -83,9 +83,9 @@ Steps:
 6. Additional LLM providers (OpenAI, OpenRouter) with ModelRouter
 7. Model routing: primary for complex tasks, lightweight for quick responses
 8. Session resumption via AgentEx.resume/1
-9. `Worth.UI.Theme` -- configurable color themes
-10. `Worth.UI.Input` -- command history, multi-line
-11. `Worth.UI.CommandPalette` -- fuzzy command search
+9. `Worth.Theme` -- configurable themes (Standard, Cyberdeck, Fifth Element)
+10. `Worth.UI.Commands` -- command history, command parsing
+11. `WorthWeb.CommandHandler` -- slash command dispatch
 12. Context compaction UI feedback, error handling, cost limits
 13. `worth init` CLI command
 

@@ -19,18 +19,10 @@ worth/
 │   │   ├── telemetry.ex            # Telemetry handlers + metrics reporter
 │   │   ├── error.ex                # Structured error type
 │   │   │
-│   │   ├── ui/                     # TermUI layer
-│   │   │   ├── root.ex             # Root Elm component
-│   │   │   ├── header.ex           # Top bar
-│   │   │   ├── chat.ex             # Chat area (Viewport)
-│   │   │   ├── sidebar.ex          # Sidebar (Tabs)
-│   │   │   ├── input.ex            # Text input with history
-│   │   │   ├── message.ex          # Message rendering
-│   │   │   ├── tool_trace.ex       # Tool call/result blocks
-│   │   │   ├── status.ex           # Status indicators
-│   │   │   └── theme.ex            # Color themes
+│   │   ├── ui/                     # Command parser
+│   │   │   └── commands.ex             # Pure slash command parser (used by LiveView)
 │   │   │
-│   │   ├── llm/                    # LLM provider adapters
+│   │   ├── llm/                    # LLM dispatch layer
 │   │   │   ├── adapter.ex          # Behaviour
 │   │   │   ├── anthropic.ex
 │   │   │   ├── openai.ex
@@ -79,6 +71,32 @@ worth/
 │   │   │
 │   │   ├── persistence/            # Session persistence
 │   │   │   └── transcript.ex       # JSONL transcript backend
+│   │   │
+│   │   │
+│   │   ├── theme/                  # Theme system
+│   │   │   ├── standard.ex             # Default theme
+│   │   │   ├── cyberdeck.ex            # Cyberdeck theme
+│   │   │   ├── fifth_element.ex        # Fifth Element theme
+│   │   │   ├── registry.ex             # Theme registry
+│   │   │   └── behaviour.ex            # Worth.Theme behaviour
+│   │   │
+│   │   ├── web/                    # Phoenix LiveView web UI
+│   │   │   ├── endpoint.ex             # Phoenix Endpoint (Bandit)
+│   │   │   ├── router.ex               # Routes / to ChatLive
+│   │   │   ├── telemetry.ex            # Phoenix telemetry
+│   │   │   ├── live/
+│   │   │   │   ├── chat_live.ex            # Main LiveView
+│   │   │   │   ├── chat_live.html.heex     # HEEx template
+│   │   │   │   ├── command_handler.ex      # Slash command dispatcher
+│   │   │   │   └── commands/               # Command handlers
+│   │   │   ├── components/
+│   │   │   │   ├── chat_components.ex      # Chat rendering
+│   │   │   │   ├── core_components.ex      # Shared UI primitives
+│   │   │   │   ├── layouts/
+│   │   │   │   │   └── root.html.heex      # Root layout
+│   │   │   │   ├── settings_components.ex  # Settings UI
+│   │   │   │   └── theme_helper.ex         # color/1 helper
+│   │   │   └── controllers/                # Error handlers
 │   │   │
 │   │   ├── commands/               # Slash command handlers
 │   │   │   └── registry.ex

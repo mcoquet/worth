@@ -599,7 +599,7 @@ defmodule WorthWeb.ChatLive do
 
   defp parse_int(_, default), do: default
 
-  # ── Event processing (ported from Worth.UI.Events) ──────────────
+  # ── Event processing ──────────────────────────────────────────
 
   defp process_event(event, socket) do
     Logger.info("[ChatLive.process_event] Processing event: #{inspect(event)}")
