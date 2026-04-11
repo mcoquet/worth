@@ -1,4 +1,6 @@
 use base64::Engine;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::process::{Child, Command, ExitStatus};
 use std::sync::Mutex;
 use tauri::{
@@ -10,7 +12,8 @@ use tauri_plugin_dialog::DialogExt;
 
 struct AppState {
     otp_process: Mutex<Option<Child>>,
-    port: Mutex<u16>,
+    pubsub_port: Mutex<u16>,
+    pubsub_stream: Mutex<Option<std::net::TcpStream>>,
 }
 
 pub fn run() {
@@ -24,7 +27,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState {
             otp_process: Mutex::new(None),
-            port: Mutex::new(0),
+            pubsub_port: Mutex::new(0),
+            pubsub_stream: Mutex::new(None),
         })
         .setup(|app| {
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Worth").build(app)?;
@@ -39,6 +43,8 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "quit" => {
+                        send_pubsub(app, "quit", "");
+                        kill_otp(app);
                         app.exit(0);
                     }
                     "open" => {
@@ -59,10 +65,19 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let RunEvent::ExitRequested { .. } = event {
+                send_pubsub(app, "quit", "");
                 kill_otp(app);
                 app.exit(0);
             }
         });
+}
+
+fn send_pubsub(app: &tauri::AppHandle, topic: &str, payload: &str) {
+    let state = app.state::<AppState>();
+    let mut stream_guard = state.pubsub_stream.lock().unwrap();
+    if let Some(ref mut stream) = *stream_guard {
+        let _ = write_frame(stream, topic, payload);
+    }
 }
 
 fn kill_otp(app: &tauri::AppHandle) {
@@ -84,17 +99,23 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
         release_dir.join("bin").join("desktop")
     };
 
-    let port = find_available_port();
-    *app.state::<AppState>().port.lock().unwrap() = port;
+    let http_port = find_available_port();
+
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let pubsub_port = listener.local_addr()?.port();
+    listener.set_nonblocking(true)?;
+
+    *app.state::<AppState>().pubsub_port.lock().unwrap() = pubsub_port;
 
     let mut cmd = Command::new(&otp_bin);
     cmd.arg("start")
         .env("WORTH_DESKTOP", "1")
         .env("PHX_SERVER", "true")
-        .env("PORT", port.to_string())
+        .env("PORT", http_port.to_string())
         .env("WORTH_DATABASE_BACKEND", "libsql")
         .env("WORTH_AUTO_MIGRATE", "1")
-        .env("SECRET_KEY_BASE", generate_secret_key_base());
+        .env("SECRET_KEY_BASE", generate_secret_key_base())
+        .env("WORTH_PUBSUB", format!("tcp://127.0.0.1:{}", pubsub_port));
 
     #[cfg(target_os = "windows")]
     {
@@ -103,10 +124,7 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
     }
 
     let child = cmd.spawn()?;
-    let state = app.state::<AppState>();
-    *state.otp_process.lock().unwrap() = Some(child);
-
-    let url = format!("http://127.0.0.1:{}", port);
+    *app.state::<AppState>().otp_process.lock().unwrap() = Some(child);
 
     let splash_window = tauri::WebviewWindowBuilder::new(
         app,
@@ -124,14 +142,14 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
     let splash_label = splash_window.label().to_string();
 
     std::thread::spawn(move || {
-        let started = wait_for_server(&url, 45);
+        let (stream, url) = wait_for_ready(&listener, 60);
 
-        if !started {
+        if stream.is_none() {
             show_crash_dialog(
                 &app_handle,
                 "Worth failed to start",
                 &format!(
-                    "The server did not respond within 45 seconds.\n\nLogs may be available at:\n{}/worth.log",
+                    "The backend did not signal ready within 60 seconds.\n\nLogs may be available at:\n{}/worth.log",
                     worth_home_dir()
                 ),
             );
@@ -140,6 +158,14 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
                 .map(|w| w.close());
             app_handle.exit(1);
             return;
+        }
+
+        let stream = stream.unwrap();
+
+        {
+            let state = app_handle.state::<AppState>();
+            *state.pubsub_stream.lock().unwrap() =
+                Some(stream.try_clone().expect("failed to clone pubsub stream"));
         }
 
         let _ = app_handle
@@ -158,10 +184,137 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
         .expect("failed to create main window");
         let _ = main_window.set_focus();
 
+        listen_pubsub(&app_handle, stream);
         monitor_otp_process(&app_handle);
     });
 
     Ok(())
+}
+
+fn wait_for_ready(
+    listener: &TcpListener,
+    timeout_secs: u64,
+) -> (Option<std::net::TcpStream>, String) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let mut buf = [0u8; 4096];
+
+    loop {
+        if std::time::Instant::now() > deadline {
+            return (None, String::new());
+        }
+
+        match listener.accept() {
+            Ok((mut stream, _addr)) => {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs)))
+                    .ok();
+
+                loop {
+                    match stream.read(&mut buf) {
+                        Ok(0) => return (None, String::new()),
+                        Ok(n) => {
+                            if let Some((topic, payload)) = parse_frame(&buf[..n]) {
+                                if topic == "worth" && payload.starts_with("ready:") {
+                                    let url = payload.strip_prefix("ready:").unwrap().to_string();
+                                    return (Some(stream), url);
+                                }
+                            }
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            continue;
+                        }
+                        Err(_) => return (None, String::new()),
+                    }
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            }
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            }
+        }
+    }
+}
+
+fn listen_pubsub(app: &tauri::AppHandle, mut stream: std::net::TcpStream) {
+    let mut buf = [0u8; 4096];
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .ok();
+
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => {
+                eprintln!("PubSub connection closed by Elixir side");
+                return;
+            }
+            Ok(n) => {
+                if let Some((topic, payload)) = parse_frame(&buf[..n]) {
+                    if topic == "worth" && payload == "shutdown" {
+                        eprintln!("Received shutdown from Elixir");
+                        kill_otp(app);
+                        app.exit(0);
+                        return;
+                    }
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
+            Err(e) => {
+                eprintln!("PubSub read error: {}", e);
+                return;
+            }
+        }
+    }
+}
+
+fn parse_frame(data: &[u8]) -> Option<(String, String)> {
+    if data.len() < 6 {
+        return None;
+    }
+
+    let length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if data.len() < 4 + length {
+        return None;
+    }
+
+    let frame = &data[4..4 + length];
+    if frame.is_empty() || frame[0] != 1 {
+        return None;
+    }
+
+    let topic_len = frame[1] as usize;
+    if frame.len() < 2 + topic_len {
+        return None;
+    }
+
+    let topic = String::from_utf8_lossy(&frame[2..2 + topic_len]).to_string();
+    let payload = String::from_utf8_lossy(&frame[2 + topic_len..]).to_string();
+
+    Some((topic, payload))
+}
+
+fn write_frame(
+    stream: &mut std::net::TcpStream,
+    topic: &str,
+    payload: &str,
+) -> std::io::Result<()> {
+    let topic_bytes = topic.as_bytes();
+    let payload_bytes = payload.as_bytes();
+    let frame_len = 1 + topic_bytes.len() + payload_bytes.len();
+
+    let mut frame = Vec::with_capacity(4 + frame_len);
+    frame.extend_from_slice(&(frame_len as u32).to_be_bytes());
+    frame.push(1);
+    frame.push(topic_bytes.len() as u8);
+    frame.extend_from_slice(topic_bytes);
+    frame.extend_from_slice(payload_bytes);
+
+    stream.write_all(&frame)
 }
 
 fn monitor_otp_process(app: &tauri::AppHandle) {
@@ -210,24 +363,8 @@ fn worth_home_dir() -> String {
 }
 
 fn find_available_port() -> u16 {
-    use std::net::TcpListener;
     let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
     listener.local_addr().unwrap().port()
-}
-
-fn wait_for_server(url: &str, max_retries: u32) -> bool {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .unwrap_or_default();
-
-    for _ in 0..max_retries {
-        if client.get(url).send().is_ok() {
-            return true;
-        }
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-    false
 }
 
 fn generate_secret_key_base() -> String {

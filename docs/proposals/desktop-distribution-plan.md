@@ -74,19 +74,24 @@
 - [x] System tray (Open / Quit)
 - [x] Single instance enforcement (`tauri-plugin-single-instance`)
 - [x] Graceful shutdown (kill OTP child on exit)
-- [ ] Crash reporter (show dialog on OTP crash) — TODO
-- [ ] Test Rust compilation (`cargo check`)
+- [x] TCP PubSub server (starts listener, passes `WORTH_PUBSUB` to OTP, receives `ready`/`shutdown` frames)
+- [x] Crash reporter (show dialog on OTP crash or startup timeout)
+- [ ] Test Rust compilation (`cargo check`) on build machine
 
 ### 2.3 Elixir side (`lib/worth/desktop/`)
 - [x] `bridge.ex` — TCP PubSub client (connects to `WORTH_PUBSUB` env var)
 - [x] Broadcasts `ready:<url>` after endpoint starts
 - [x] Listens for `quit` → `System.stop()`
+- [x] Broadcasts `shutdown` on application stop
 - [x] Hooked into supervision tree (only starts when `WORTH_DESKTOP=1`)
-- [x] Ready broadcast triggered 500ms after app start
+- [x] Connection retry loop (30 retries, 1s interval)
+- [x] Frame buffering for partial TCP reads
 
 ### 2.4 Build orchestration
 - [x] Create `rel/desktop/tauri.sh` build script
 - [x] Subcommands: `release`, `tauri`, `build`, `dev`
+- [x] `tauri_build` copies OTP release into `src-tauri/rel/` for Tauri resource bundling
+- [x] `tauri.conf.json` resources config bundles `rel/**/*`
 - [ ] Test full `./tauri.sh build` end-to-end (needs Rust toolchain)
 
 ---
@@ -162,3 +167,6 @@
 | 2026-04-10 | 2.3 | Implemented Elixir bridge: TCP PubSub client, ready broadcast, quit listener |
 | 2026-04-10 | 2.4 | Created tauri.sh build orchestration script |
 | 2026-04-10 | 4 | Generated app icon (SVG → PNG/ICO/ICNS), slogan "Your ideas are WORTH more" added to UI + splash + CLI |
+| 2026-04-11 | 2.2 | Rewrote Rust lib.rs: replaced HTTP polling with TCP PubSub server, sends WORTH_PUBSUB to OTP, handles ready/shutdown frames, removed reqwest dep |
+| 2026-04-11 | 2.3 | Rewrote Elixir bridge: connection retry loop, frame buffering for partial TCP reads, shutdown broadcast on app stop, removed duplicate ready broadcast from application.ex |
+| 2026-04-11 | 2.4 | Fixed build pipeline: tauri_build copies release into src-tauri/rel/, tauri.conf.json resources config, removed dead WORTH_PORT from env.sh.eex, expanded .gitignore for full target/ |

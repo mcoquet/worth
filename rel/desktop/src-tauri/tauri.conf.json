@@ -1,11 +1,11 @@
 {
   "productName": "Worth",
-  "identifier": "ai.worth.app",
+  "identifier": "rocks.worth.desktop",
   "version": "0.1.0",
   "build": {
     "beforeBuildCommand": "",
     "beforeBundleCommand": "",
-    "frontendDist": ""
+    "frontendDist": "dist"
   },
   "app": {
     "withGlobalTauri": false,
@@ -28,6 +28,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": []
+    "resources": {
+      "rel/**/*": "rel/"
+    }
   }
 }

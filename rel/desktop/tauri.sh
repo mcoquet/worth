@@ -19,6 +19,10 @@ mix_release() {
 }
 
 tauri_build() {
+    echo "==> Preparing OTP release for bundling..."
+    mkdir -p "$TAURI_DIR/src-tauri/rel"
+    cp -a "$TAURI_DIR/release/"* "$TAURI_DIR/rel/"
+
     echo "==> Building Tauri application..."
     cd "$TAURI_DIR"
 

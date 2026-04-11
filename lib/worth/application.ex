@@ -52,13 +52,6 @@ defmodule Worth.Application do
           AgentEx.LLM.Catalog.refresh()
         end)
 
-        if System.get_env("WORTH_DESKTOP") == "1" do
-          Task.Supervisor.start_child(Worth.SkillInit, fn ->
-            Process.sleep(500)
-            Worth.Desktop.Bridge.broadcast_ready(Worth.Boot.url())
-          end)
-        end
-
         {:ok, pid}
 
       error ->
@@ -68,6 +61,7 @@ defmodule Worth.Application do
 
   @impl true
   def stop(_state) do
+    Worth.Desktop.Bridge.broadcast_shutdown()
     :ok
   end
 end
