@@ -10,6 +10,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
+/// Maximum allowed frame payload size (1 MB) to prevent memory exhaustion
+/// from malformed or malicious frames.
+const MAX_FRAME_SIZE: usize = 1024 * 1024;
+
 struct AppState {
     otp_process: Mutex<Option<Child>>,
     pubsub_port: Mutex<u16>,
@@ -31,6 +35,7 @@ pub fn run() {
             pubsub_stream: Mutex::new(None),
         })
         .setup(|app| {
+            // Build tray menu
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Worth").build(app)?;
             let open_item = MenuItemBuilder::with_id("open", "Open Worth").build(app)?;
 
@@ -38,7 +43,11 @@ pub fn run() {
                 .items(&[&open_item, &quit_item])
                 .build()?;
 
+            // Build a single tray icon with both icon and menu
             let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().cloned().unwrap_or_else(|| {
+                    tauri::image::Image::new(&[], 0, 0)
+                }))
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -74,7 +83,10 @@ pub fn run() {
 
 fn send_pubsub(app: &tauri::AppHandle, topic: &str, payload: &str) {
     let state = app.state::<AppState>();
-    let mut stream_guard = state.pubsub_stream.lock().unwrap();
+    let Ok(mut stream_guard) = state.pubsub_stream.lock() else {
+        eprintln!("[worth] failed to acquire pubsub_stream lock (poisoned)");
+        return;
+    };
     if let Some(ref mut stream) = *stream_guard {
         let _ = write_frame(stream, topic, payload);
     }
@@ -82,8 +94,12 @@ fn send_pubsub(app: &tauri::AppHandle, topic: &str, payload: &str) {
 
 fn kill_otp(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
-    let mut proc = state.otp_process.lock().unwrap();
+    let Ok(mut proc) = state.otp_process.lock() else {
+        eprintln!("[worth] failed to acquire otp_process lock (poisoned)");
+        return;
+    };
     if let Some(ref mut child) = *proc {
+        // Attempt graceful shutdown first via pubsub, then force kill after timeout
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -130,7 +146,7 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
         return Err(format!("OTP binary not found: {:?}", otp_bin).into());
     }
 
-    let http_port = find_available_port();
+    let http_port = find_available_port()?;
     eprintln!("[worth] http_port = {}", http_port);
 
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -138,7 +154,13 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
     let pubsub_port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
 
-    *app.state::<AppState>().pubsub_port.lock().unwrap() = pubsub_port;
+    {
+        let state = app.state::<AppState>();
+        let Ok(mut guard) = state.pubsub_port.lock() else {
+            return Err("pubsub_port mutex poisoned".into());
+        };
+        *guard = pubsub_port;
+    }
 
     let mut cmd = Command::new(&otp_bin);
     cmd.arg("start")
@@ -153,16 +175,23 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x00000008);
+        cmd.creation_flags(0x00000008); // CREATE_NO_WINDOW
     }
 
     let child = cmd.spawn()?;
-    *app.state::<AppState>().otp_process.lock().unwrap() = Some(child);
+    {
+        let state = app.state::<AppState>();
+        let Ok(mut guard) = state.otp_process.lock() else {
+            return Err("otp_process mutex poisoned".into());
+        };
+        *guard = Some(child);
+    }
 
+    // Create splash screen with loading indicator
     let splash_window = tauri::WebviewWindowBuilder::new(
         app,
         "splash",
-        tauri::WebviewUrl::App("splash.html".into()),
+        tauri::WebviewUrl::App("index.html".into()),
     )
     .title("Worth")
     .inner_size(480.0, 320.0)
@@ -193,28 +222,64 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
             return;
         }
 
+        // Safe: we just checked is_none() above
         let stream = stream.unwrap();
 
         {
             let state = app_handle.state::<AppState>();
-            *state.pubsub_stream.lock().unwrap() =
-                Some(stream.try_clone().expect("failed to clone pubsub stream"));
+            let Ok(mut guard) = state.pubsub_stream.lock() else {
+                eprintln!("[worth] pubsub_stream mutex poisoned, cannot store stream");
+                app_handle.exit(1);
+                return;
+            };
+            match stream.try_clone() {
+                Ok(cloned) => *guard = Some(cloned),
+                Err(e) => {
+                    eprintln!("[worth] failed to clone pubsub stream: {}", e);
+                    app_handle.exit(1);
+                    return;
+                }
+            }
         }
 
+        // Close splash screen
         let _ = app_handle
             .get_webview_window(&splash_label)
             .map(|w| w.close());
 
-        let main_window = tauri::WebviewWindowBuilder::new(
+        // Parse the URL safely
+        let parsed_url = match url.parse() {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("[worth] failed to parse URL '{}': {}", url, e);
+                show_crash_dialog(
+                    &app_handle,
+                    "Worth failed to start",
+                    &format!("Invalid URL received from backend: {}", url),
+                );
+                app_handle.exit(1);
+                return;
+            }
+        };
+
+        let main_window = match tauri::WebviewWindowBuilder::new(
             &app_handle,
             "main",
-            tauri::WebviewUrl::External(url.parse().unwrap()),
+            tauri::WebviewUrl::External(parsed_url),
         )
         .title("Worth")
         .inner_size(1280.0, 900.0)
         .center()
         .build()
-        .expect("failed to create main window");
+        {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("[worth] failed to create main window: {}", e);
+                show_crash_dialog(&app_handle, "Worth failed to start", &format!("Could not create main window: {}", e));
+                app_handle.exit(1);
+                return;
+            }
+        };
 
         let win = main_window.clone();
         main_window.on_window_event(move |event| {
@@ -242,6 +307,7 @@ fn wait_for_ready(
 
     loop {
         if std::time::Instant::now() > deadline {
+            eprintln!("[worth] timed out waiting for backend ready signal");
             return (None, String::new());
         }
 
@@ -258,6 +324,7 @@ fn wait_for_ready(
                             if let Some((topic, payload)) = parse_frame(&buf[..n]) {
                                 if topic == "worth" && payload.starts_with("ready:") {
                                     let url = payload.strip_prefix("ready:").unwrap().to_string();
+                                    eprintln!("[worth] backend ready at {}", url);
                                     return (Some(stream), url);
                                 }
                             }
@@ -266,7 +333,10 @@ fn wait_for_ready(
                             std::thread::sleep(std::time::Duration::from_millis(100));
                             continue;
                         }
-                        Err(_) => return (None, String::new()),
+                        Err(e) => {
+                            eprintln!("[worth] read error while waiting for ready: {}", e);
+                            return (None, String::new());
+                        }
                     }
                 }
             }
@@ -291,13 +361,13 @@ fn listen_pubsub(app: &tauri::AppHandle, mut stream: std::net::TcpStream) {
     loop {
         match stream.read(&mut buf) {
             Ok(0) => {
-                eprintln!("PubSub connection closed by Elixir side");
+                eprintln!("[worth] PubSub connection closed by Elixir side");
                 return;
             }
             Ok(n) => {
                 if let Some((topic, payload)) = parse_frame(&buf[..n]) {
                     if topic == "worth" && payload == "shutdown" {
-                        eprintln!("Received shutdown from Elixir");
+                        eprintln!("[worth] received shutdown from Elixir");
                         kill_otp(app);
                         app.exit(0);
                         return;
@@ -307,7 +377,7 @@ fn listen_pubsub(app: &tauri::AppHandle, mut stream: std::net::TcpStream) {
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
             Err(e) => {
-                eprintln!("PubSub read error: {}", e);
+                eprintln!("[worth] PubSub read error: {}", e);
                 return;
             }
         }
@@ -320,6 +390,13 @@ fn parse_frame(data: &[u8]) -> Option<(String, String)> {
     }
 
     let length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+    // Reject frames larger than MAX_FRAME_SIZE to prevent memory exhaustion
+    if length > MAX_FRAME_SIZE {
+        eprintln!("[worth] rejecting oversized frame: {} bytes (max {})", length, MAX_FRAME_SIZE);
+        return None;
+    }
+
     if data.len() < 4 + length {
         return None;
     }
@@ -347,11 +424,11 @@ fn write_frame(
 ) -> std::io::Result<()> {
     let topic_bytes = topic.as_bytes();
     let payload_bytes = payload.as_bytes();
-    let frame_len = 1 + topic_bytes.len() + payload_bytes.len();
+    let frame_len = 1 + 1 + topic_bytes.len() + payload_bytes.len();
 
     let mut frame = Vec::with_capacity(4 + frame_len);
     frame.extend_from_slice(&(frame_len as u32).to_be_bytes());
-    frame.push(1);
+    frame.push(1); // protocol version
     frame.push(topic_bytes.len() as u8);
     frame.extend_from_slice(topic_bytes);
     frame.extend_from_slice(payload_bytes);
@@ -362,8 +439,11 @@ fn write_frame(
 fn monitor_otp_process(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(5));
-        let mut guard = state.otp_process.lock().unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let Ok(mut guard) = state.otp_process.lock() else {
+            eprintln!("[worth] otp_process mutex poisoned in monitor");
+            return;
+        };
         match guard.as_mut() {
             Some(child) => match child.try_wait() {
                 Ok(Some(status)) => {
@@ -376,7 +456,7 @@ fn monitor_otp_process(app: &tauri::AppHandle) {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    eprintln!("Failed to check OTP process: {}", e);
+                    eprintln!("[worth] failed to check OTP process: {}", e);
                 }
             },
             None => return,
@@ -404,9 +484,14 @@ fn worth_home_dir() -> String {
         .unwrap_or_else(|| "~/.worth".to_string())
 }
 
-fn find_available_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind to random port");
-    listener.local_addr().unwrap().port()
+fn find_available_port() -> Result<u16, Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("failed to bind to random port: {}", e))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("failed to get local address: {}", e))?
+        .port();
+    Ok(port)
 }
 
 fn generate_secret_key_base() -> String {

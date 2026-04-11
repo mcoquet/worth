@@ -74,15 +74,11 @@ defmodule Worth.MixProject do
       {:heroicons,
        github: "tailwindlabs/heroicons", tag: "v2.2.0", sparse: "optimized", app: false, compile: false, depth: 1},
 
-      # Database (choose one backend)
-      # Default: libSQL for zero-configuration setup
+      # Database
       {:ecto_libsql, "~> 0.9"},
-      {:postgrex, "~> 0.19"},
-      {:pgvector, "~> 0.3"},
-      # Core database dependencies
-      {:ash, "~> 3.23"},
-      {:ash_postgres, "~> 2.8"},
       {:ecto_sql, "~> 3.12"},
+      # pgvector types required by mneme schemas
+      {:pgvector, "~> 0.3"},
 
       # MCP
       {:hermes_mcp, "~> 0.14.1"},
@@ -98,14 +94,11 @@ defmodule Worth.MixProject do
 
       # Utilities
       {:nimble_options, "~> 1.1"},
-      {:owl, "~> 0.12"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5"},
       {:earmark, "~> 1.4"},
-      {:dns_cluster, "~> 0.2.0"},
 
-      # Test / Dev
-      {:lazy_html, ">= 0.1.0", only: :test},
+      # Dev
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end

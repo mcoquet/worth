@@ -11,6 +11,8 @@ defmodule Worth.Desktop.Bridge do
 
   use GenServer
 
+  require Logger
+
   def start_link(opts \\ []) do
     if desktop_mode?() do
       GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -35,20 +37,19 @@ defmodule Worth.Desktop.Bridge do
   def init(_opts) do
     case connect_to_pubsub(max_retries: 30, retry_interval: 1000) do
       {:ok, socket} ->
+        Logger.info("Desktop.Bridge: connected to Tauri PubSub")
         Process.send_after(self(), :broadcast_ready, 500)
         {:ok, %{socket: socket, buffer: <<>>}}
 
       {:error, reason} ->
-        if desktop_mode?() do
-          IO.warn("Desktop.Bridge: failed to connect to PubSub: #{inspect(reason)}")
-        end
-
+        Logger.error("Desktop.Bridge: failed to connect to PubSub: #{inspect(reason)}")
         {:ok, %{socket: nil, buffer: <<>>}}
     end
   end
 
   @impl true
-  def handle_cast({:broadcast, message}, %{socket: nil} = state) do
+  def handle_cast({:broadcast, _message}, %{socket: nil} = state) do
+    Logger.warning("Desktop.Bridge: dropping message, no socket connection")
     {:noreply, state}
   end
 
@@ -71,6 +72,7 @@ defmodule Worth.Desktop.Bridge do
     new_state =
       Enum.reduce(messages, state, fn
         {:ok, "quit", _payload}, acc ->
+          Logger.info("Desktop.Bridge: received quit command from Tauri")
           send_frame(socket, "worth", "ack:quit")
           System.stop(0)
           acc
@@ -87,12 +89,12 @@ defmodule Worth.Desktop.Bridge do
   end
 
   def handle_info({:tcp_closed, _socket}, state) do
-    IO.warn("Desktop.Bridge: TCP connection closed by Rust side")
+    Logger.error("Desktop.Bridge: TCP connection closed by Tauri")
     {:stop, :tcp_closed, state}
   end
 
   def handle_info({:tcp_error, _socket, reason}, state) do
-    IO.warn("Desktop.Bridge: TCP error: #{inspect(reason)}")
+    Logger.error("Desktop.Bridge: TCP error: #{inspect(reason)}")
     {:stop, {:tcp_error, reason}, state}
   end
 
@@ -115,24 +117,43 @@ defmodule Worth.Desktop.Bridge do
         end
 
       addr ->
-        [host, port] = String.split(String.replace(addr, "tcp://", ""), ":")
+        case parse_pubsub_address(addr) do
+          {:ok, host, port} ->
+            case :gen_tcp.connect(
+                   String.to_charlist(host),
+                   port,
+                   [:binary, active: true, packet: :raw]
+                 ) do
+              {:ok, socket} ->
+                {:ok, socket}
 
-        case :gen_tcp.connect(
-               String.to_charlist(host),
-               String.to_integer(port),
-               [:binary, active: true, packet: :raw]
-             ) do
-          {:ok, socket} ->
-            {:ok, socket}
+              {:error, reason} ->
+                if retries == 1 do
+                  {:error, reason}
+                else
+                  Process.sleep(interval)
+                  connect_loop(retries - 1, interval)
+                end
+            end
 
           {:error, reason} ->
-            if retries == 1 do
-              {:error, reason}
-            else
-              Process.sleep(interval)
-              connect_loop(retries - 1, interval)
-            end
+            {:error, reason}
         end
+    end
+  end
+
+  defp parse_pubsub_address(addr) do
+    stripped = String.replace(addr, "tcp://", "")
+
+    case String.split(stripped, ":") do
+      [host, port_str] ->
+        case Integer.parse(port_str) do
+          {port, ""} -> {:ok, host, port}
+          _ -> {:error, {:invalid_port, port_str}}
+        end
+
+      _ ->
+        {:error, {:invalid_pubsub_address, addr}}
     end
   end
 
