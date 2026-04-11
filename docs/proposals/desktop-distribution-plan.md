@@ -76,7 +76,11 @@
 - [x] Graceful shutdown (kill OTP child on exit)
 - [x] TCP PubSub server (starts listener, passes `WORTH_PUBSUB` to OTP, receives `ready`/`shutdown` frames)
 - [x] Crash reporter (show dialog on OTP crash or startup timeout)
-- [ ] Test Rust compilation (`cargo check`) on build machine
+- [x] Window close hides to tray (OTP keeps running)
+- [x] App compiles and launches successfully — web UI loads in Tauri window
+- [x] Auto-migrations run on first boot (libSQL)
+- [x] Added missing `workspace_index_entries` migration
+- [x] Fixed `EmbeddingModelIdAnd1536Dim` migration for libSQL adapter check
 
 ### 2.3 Elixir side (`lib/worth/desktop/`)
 - [x] `bridge.ex` — TCP PubSub client (connects to `WORTH_PUBSUB` env var)
@@ -92,7 +96,7 @@
 - [x] Subcommands: `release`, `tauri`, `build`, `dev`
 - [x] `tauri_build` copies OTP release into `src-tauri/rel/` for Tauri resource bundling
 - [x] `tauri.conf.json` resources config bundles `rel/**/*`
-- [ ] Test full `./tauri.sh build` end-to-end (needs Rust toolchain)
+- [x] End-to-end build tested successfully (Linux x86_64)
 
 ---
 
@@ -112,7 +116,7 @@
 - [x] Slogan: "Your ideas are WORTH more" — added to splash screen, empty chat state, CLI help
 - [x] System tray menu (Open Worth, Quit) — Rust side done
 - [x] Single instance enforcement (`tauri-plugin-single-instance`) — Rust side done
-- [ ] Crash reporter (Rust catches OTP exit, shows dialog with log path)
+- [x] Window close → hide to tray, tray Quit → full shutdown
 - [ ] Auto-update setup (`tauri-plugin-updater`, defer code signing)
 - [ ] Deep linking (`worth://` URL scheme) — optional
 
@@ -170,3 +174,10 @@
 | 2026-04-11 | 2.2 | Rewrote Rust lib.rs: replaced HTTP polling with TCP PubSub server, sends WORTH_PUBSUB to OTP, handles ready/shutdown frames, removed reqwest dep |
 | 2026-04-11 | 2.3 | Rewrote Elixir bridge: connection retry loop, frame buffering for partial TCP reads, shutdown broadcast on app stop, removed duplicate ready broadcast from application.ex |
 | 2026-04-11 | 2.4 | Fixed build pipeline: tauri_build copies release into src-tauri/rel/, tauri.conf.json resources config, removed dead WORTH_PORT from env.sh.eex, expanded .gitignore for full target/ |
+| 2026-04-11 | — | App compiles and launches successfully on Linux x86_64 — web UI loads in Tauri window, splash → main window transition works, tray icon functional |
+| 2026-04-11 | — | Fixed vm.args.eex duplicate -mode conflict, fixed release_dir path resolution for dev builds |
+| 2026-04-11 | — | Fixed Elixir bridge send_frame: 4-byte big-endian header, iolist-safe send |
+| 2026-04-11 | — | Moved auto-migrate to application.ex (after supervisor start) |
+| 2026-04-11 | — | Added missing workspace_index_entries migration |
+| 2026-04-11 | — | Fixed EmbeddingModelIdAnd1536Dim migration: LibSql vs LibSQL typo |
+| 2026-04-11 | — | Added window close → hide to tray behavior |

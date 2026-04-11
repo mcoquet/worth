@@ -25,6 +25,10 @@ defmodule Worth.Application do
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
       {:ok, pid} ->
+        if System.get_env("WORTH_DESKTOP") == "1" do
+          Worth.Boot.run_migrations!()
+        end
+
         Task.Supervisor.start_child(Worth.SkillInit, fn ->
           Worth.Skill.Registry.init()
         end)

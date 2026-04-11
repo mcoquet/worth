@@ -50,8 +50,9 @@ defmodule Worth.Memory.Embeddings.StaleCheck do
   end
 
   defp latest_model_id(repo, table) do
-    case repo.query(
-           "SELECT embedding_model_id FROM #{table} WHERE embedding_model_id IS NOT NULL ORDER BY inserted_at DESC LIMIT 1",
+    case Ecto.Adapters.SQL.query(
+           repo,
+           "SELECT embedding_model_id FROM #{table} WHERE embedding_model_id IS NOT NULL ORDER BY rowid DESC LIMIT 1",
            []
          ) do
       {:ok, %{rows: [[id]]}} -> id

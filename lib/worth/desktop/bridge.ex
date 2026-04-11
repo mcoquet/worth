@@ -137,14 +137,14 @@ defmodule Worth.Desktop.Bridge do
   end
 
   defp send_frame(socket, topic, payload) do
-    topic_bytes = topic |> String.to_charlist()
+    topic_bytes = String.to_charlist(topic)
     topic_len = length(topic_bytes)
+    payload_bytes = String.to_charlist(payload)
 
-    inner = [1, topic_len | topic_bytes] ++ String.to_charlist(payload)
-    frame_len = length(inner)
+    inner = [1, topic_len | topic_bytes] ++ payload_bytes
+    frame_len = IO.iodata_length(inner)
 
-    header = :binary.encode_unsigned(frame_len, 32)
-    :gen_tcp.send(socket, [header | inner])
+    :gen_tcp.send(socket, [<<frame_len::32-big>> | inner])
   end
 
   defp parse_frames(buffer) do

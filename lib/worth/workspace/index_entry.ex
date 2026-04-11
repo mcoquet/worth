@@ -16,7 +16,7 @@ defmodule Worth.Workspace.IndexEntry do
     field(:content_hash, :string)
     field(:file_size, :integer)
     field(:last_modified, :utc_datetime_usec)
-    field(:mneme_entry_ids, {:array, :binary_id}, default: [])
+    field(:mneme_entry_ids, :map, default: %{})
     field(:indexed_at, :utc_datetime_usec)
     field(:status, :string, default: "indexed")
 

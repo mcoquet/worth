@@ -90,8 +90,35 @@ fn kill_otp(app: &tauri::AppHandle) {
     *proc = None;
 }
 
+fn release_dir(app: &tauri::App) -> std::path::PathBuf {
+    let resource_rel = app.path().resource_dir().map(|d| d.join("rel")).ok();
+
+    if let Some(dir) = resource_rel {
+        if dir.join("bin").exists() {
+            return dir;
+        }
+    }
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    if let Some(dir) = exe_dir {
+        let dev_rel = dir.join("../../release");
+        if dev_rel.join("bin").exists() {
+            return dev_rel;
+        }
+    }
+
+    app.path()
+        .resource_dir()
+        .expect("failed to determine resource directory")
+        .join("rel")
+}
+
 fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let release_dir = app.path().resource_dir()?.join("rel");
+    let release_dir = release_dir(app);
+    eprintln!("[worth] release_dir = {:?}", release_dir);
 
     let otp_bin = if cfg!(target_os = "windows") {
         release_dir.join("bin").join("desktop.bat")
@@ -99,9 +126,15 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
         release_dir.join("bin").join("desktop")
     };
 
-    let http_port = find_available_port();
+    if !otp_bin.exists() {
+        return Err(format!("OTP binary not found: {:?}", otp_bin).into());
+    }
 
-    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let http_port = find_available_port();
+    eprintln!("[worth] http_port = {}", http_port);
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to bind TCP listener: {}", e))?;
     let pubsub_port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
 
@@ -182,6 +215,15 @@ fn start_otp_and_create_window(app: &mut tauri::App) -> Result<(), Box<dyn std::
         .center()
         .build()
         .expect("failed to create main window");
+
+        let win = main_window.clone();
+        main_window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = win.hide();
+            }
+        });
+
         let _ = main_window.set_focus();
 
         listen_pubsub(&app_handle, stream);

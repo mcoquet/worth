@@ -24,10 +24,7 @@ defmodule Mneme.Repo.Migrations.EmbeddingModelIdAnd1536Dim do
   use Ecto.Migration
 
   def up do
-    # Skip this migration for libSQL/SQLite - columns already added in base migration
-    if libsql?() do
-      # libSQL: Nothing to do - embedding_model_id was added in base migration
-      # and dimension changes require regenerating the database
+    if repo().__adapter__() == Ecto.Adapters.LibSql do
       :ok
     else
       # PostgreSQL: Full dimension migration
@@ -74,8 +71,7 @@ defmodule Mneme.Repo.Migrations.EmbeddingModelIdAnd1536Dim do
   end
 
   def down do
-    if libsql?() do
-      # libSQL: Nothing to rollback - columns stay as-is
+    if repo().__adapter__() == Ecto.Adapters.LibSql do
       :ok
     else
       # PostgreSQL: Full rollback
@@ -119,11 +115,5 @@ defmodule Mneme.Repo.Migrations.EmbeddingModelIdAnd1536Dim do
       WITH (m = 16, ef_construction = 64)
       """)
     end
-  end
-
-  defp libsql? do
-    config = Application.get_env(:worth, Worth.Repo, [])
-    adapter = Keyword.get(config, :adapter, Ecto.Adapters.LibSQL)
-    adapter == Ecto.Adapters.LibSQL
   end
 end
