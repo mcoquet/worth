@@ -564,6 +564,122 @@ defmodule WorthWeb.SettingsComponents do
     """
   end
 
+  # ── Onboarding ────────────────────────────────────────────────
+
+  attr :step, :integer, required: true
+
+  def onboarding(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center p-8">
+      <div class="max-w-lg w-full space-y-6">
+        <%!-- Logo --%>
+        <div class="text-center mb-8">
+          <div class="text-4xl font-bold text-ctp-blue mb-1">worth</div>
+          <div class="text-sm italic text-ctp-overlay0">Your ideas are WORTH more</div>
+        </div>
+
+        <%!-- Step indicator --%>
+        <div class="flex items-center justify-center gap-2 mb-6">
+          <div class={[
+            "w-2 h-2 rounded-full",
+            @step == 1 && "bg-ctp-blue",
+            @step != 1 && "bg-ctp-surface2"
+          ]} />
+          <div class={[
+            "w-2 h-2 rounded-full",
+            @step == 2 && "bg-ctp-blue",
+            @step != 2 && "bg-ctp-surface2"
+          ]} />
+        </div>
+
+        <%!-- Step 1: Home directory --%>
+        <div :if={@step == 1} class="space-y-4">
+          <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
+            <h2 class="text-lg font-semibold text-ctp-text mb-2">Welcome to Worth</h2>
+            <p class="text-sm text-ctp-subtext0 mb-4">
+              Let's set up a few things. First, choose where Worth should store its data — workspaces, skills, logs, and configuration.
+            </p>
+            <form phx-submit="onboarding_save_dir" class="space-y-4">
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">Home Directory</label>
+                <input
+                  type="text"
+                  name="home_directory"
+                  value="~/.worth"
+                  placeholder="~/.worth"
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+                />
+                <div class="text-xs text-ctp-overlay0">
+                  This directory will contain your workspaces, database, and config files.
+                </div>
+              </div>
+              <button
+                type="submit"
+                class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
+              >
+                Continue
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <%!-- Step 2: OpenRouter API key --%>
+        <div :if={@step == 2} class="space-y-4">
+          <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
+            <h2 class="text-lg font-semibold text-ctp-text mb-2">Connect to OpenRouter</h2>
+            <p class="text-sm text-ctp-subtext0 mb-4">
+              Worth uses <span class="font-semibold text-ctp-text">OpenRouter</span> to access AI models.
+              OpenRouter gives you access to many models from different providers through a single API key — including free models.
+            </p>
+
+            <div class="rounded-lg border border-ctp-surface1 bg-ctp-surface0/50 p-4 mb-4 space-y-3">
+              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">How to get your API key</div>
+              <ol class="text-sm text-ctp-subtext0 space-y-2 list-decimal list-inside">
+                <li>
+                  Go to <span class="text-ctp-blue font-mono text-xs">openrouter.ai</span> and create an account
+                </li>
+                <li>
+                  Navigate to <span class="text-ctp-blue font-mono text-xs">openrouter.ai/keys</span>
+                </li>
+                <li>Click <span class="font-semibold text-ctp-text">"Create Key"</span></li>
+                <li>Copy the key (starts with <span class="font-mono text-ctp-text">sk-or-...</span>)</li>
+              </ol>
+              <div class="text-xs text-ctp-overlay0 pt-1">
+                Worth defaults to free models, so you won't be charged unless you change the routing settings.
+              </div>
+            </div>
+
+            <form phx-submit="onboarding_save_key" class="space-y-4">
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">OpenRouter API Key</label>
+                <input
+                  type="password"
+                  name="api_key"
+                  placeholder="sk-or-..."
+                  autocomplete="off"
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+                />
+              </div>
+              <button
+                type="submit"
+                class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
+              >
+                Save & Get Started
+              </button>
+            </form>
+            <button
+              phx-click="onboarding_skip_key"
+              class="w-full mt-2 px-4 py-2 rounded text-xs text-ctp-overlay0 hover:text-ctp-text cursor-pointer transition-colors"
+            >
+              Skip for now — I'll add it later in Settings
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   # ── Preferences ────────────────────────────────────────────────
 
   defp preferences_section(assigns) do
