@@ -8,13 +8,15 @@ defmodule Worth.CLI do
           help: :boolean,
           version: :boolean,
           init: :string,
-          setup: :boolean
+          setup: :boolean,
+          no_open: :boolean
         ],
         aliases: [
           w: :workspace,
           m: :mode,
           h: :help,
-          v: :version
+          v: :version,
+          n: :no_open
         ]
       )
 
@@ -37,32 +39,17 @@ defmodule Worth.CLI do
   end
 
   defp start_worth(opts) do
-    Worth.Config.Setup.maybe_run_first_run!()
+    url =
+      Worth.Boot.run(
+        workspace: opts[:workspace],
+        mode: opts[:mode]
+      )
 
-    ensure_home_directory!()
-
-    workspace = opts[:workspace] || "personal"
-    mode = parse_mode(opts[:mode] || "code")
-    workspace_path = Path.expand("workspaces/#{workspace}", Worth.Config.Store.home_directory())
-
-    if !File.dir?(workspace_path) do
-      IO.puts("Workspace '#{workspace}' not found. Creating in #{Worth.Config.Store.home_directory()}...")
-      File.mkdir_p!(workspace_path)
+    unless opts[:no_open] do
+      open_browser(url)
     end
 
-    Application.put_env(:worth, :current_workspace, workspace)
-    Application.put_env(:worth, :current_workspace_path, workspace_path)
-    Application.put_env(:worth, :current_mode, mode)
-
-    # Ensure the Brain for this workspace is started with the right mode
-    Worth.Brain.ensure(workspace)
-    Worth.Brain.switch_mode(workspace, mode)
-
-    port = Application.get_env(:worth, WorthWeb.Endpoint)[:http][:port] || 4000
-    url = "http://localhost:#{port}"
-
     IO.puts("Worth is running at #{url}")
-    open_browser(url)
     IO.puts("Press Ctrl+C to stop.")
 
     Process.sleep(:infinity)
@@ -89,25 +76,9 @@ defmodule Worth.CLI do
     end
   end
 
-  defp parse_mode("code"), do: :code
-  defp parse_mode("research"), do: :research
-  defp parse_mode("planned"), do: :planned
-  defp parse_mode("turn_by_turn"), do: :turn_by_turn
-  defp parse_mode(_), do: :code
-
-  defp ensure_home_directory! do
-    home = Worth.Config.Store.home_directory()
-    expanded = Path.expand(home)
-
-    if !File.dir?(expanded) do
-      IO.puts("Creating home directory: #{expanded}")
-      File.mkdir_p!(expanded)
-    end
-  end
-
   defp print_help do
     IO.puts("""
-    worth v0.1.0 - An AI assistant
+    worth v0.1.0 - Your ideas are WORTH more
 
     Usage:
       worth [options]
@@ -115,12 +86,13 @@ defmodule Worth.CLI do
     Options:
       -w, --workspace <name>   Open a specific workspace (default: personal)
       -m, --mode <mode>        Execution mode: code | research | planned | turn_by_turn
+      -n, --no-open            Don't open the browser (for desktop/Tauri use)
       --init <name>            Create a new workspace and exit
       --setup                  Run the setup wizard and exit
       -h, --help               Show this help message
       -v, --version            Show version
 
-    The web UI starts at http://localhost:4000 by default.
+    The web UI starts at http://localhost:4090 by default.
     """)
   end
 end

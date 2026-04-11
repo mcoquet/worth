@@ -10,8 +10,8 @@ defmodule Worth.Settings.MasterPassword do
   import Ecto.Changeset
 
   schema "worth_master_password" do
-    field :password_hash, :string
-    field :key_salt, :binary
+    field(:password_hash, :string)
+    field(:key_salt, :binary)
     timestamps()
   end
 

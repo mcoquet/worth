@@ -117,7 +117,8 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:setup, :help}, socket) do
-    append_system(socket,
+    append_system(
+      socket,
       "Setup commands:\n  /setup                 Show current setup status\n  /setup openrouter <k>  Save OpenRouter API key\n  /setup embedding <m>   Set embedding model id"
     )
   end

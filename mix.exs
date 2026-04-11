@@ -16,7 +16,8 @@ defmodule Worth.MixProject do
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -24,6 +25,23 @@ defmodule Worth.MixProject do
     [
       extra_applications: [:logger, :runtime_tools],
       mod: {Worth.Application, []}
+    ]
+  end
+
+  defp releases do
+    [
+      worth: [
+        steps: [:assemble],
+        applications: [
+          worth: :permanent
+        ]
+      ],
+      desktop: [
+        steps: [:assemble],
+        applications: [
+          worth: :permanent
+        ]
+      ]
     ]
   end
 
@@ -39,9 +57,8 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      # Path dependencies
-      {:mneme, path: "../mneme"},
-      {:agent_ex, path: "../agent_ex"},
+      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.2.0", override: true},
+      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.1"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},

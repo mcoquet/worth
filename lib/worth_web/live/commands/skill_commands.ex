@@ -76,7 +76,8 @@ defmodule WorthWeb.Commands.SkillCommands do
   end
 
   def handle({:skill, :help}, socket) do
-    append_system(socket,
+    append_system(
+      socket,
       "Skill commands:\n  /skill list\n  /skill read <name>\n  /skill remove <name>\n  /skill history <name>\n  /skill rollback <name> <version>\n  /skill refine <name>"
     )
   end

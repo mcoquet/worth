@@ -71,7 +71,9 @@ defmodule Worth.Persistence.Transcript do
 
   defp decode_line(line) do
     case Jason.decode(line) do
-      {:ok, entry} -> [entry]
+      {:ok, entry} ->
+        [entry]
+
       {:error, _} ->
         Logger.warning("Transcript: skipping corrupt line")
         []

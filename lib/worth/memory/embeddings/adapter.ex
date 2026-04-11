@@ -172,4 +172,11 @@ defmodule Worth.Memory.Embeddings.Adapter do
   defp configured_model do
     Worth.Config.get([:memory, :embedding_model])
   end
+
+  def credentials do
+    case AgentEx.LLM.Credentials.resolve(AgentEx.LLM.Provider.OpenRouter) do
+      {:ok, %{api_key: key}} -> %{api_key: key}
+      _ -> :disabled
+    end
+  end
 end

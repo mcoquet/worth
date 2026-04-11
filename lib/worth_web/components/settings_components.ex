@@ -270,10 +270,11 @@ defmodule WorthWeb.SettingsComponents do
   ]
 
   defp routing_section(assigns) do
-    assigns = assign(assigns,
-      modes: @routing_modes,
-      preferences: @routing_preferences
-    )
+    assigns =
+      assign(assigns,
+        modes: @routing_modes,
+        preferences: @routing_preferences
+      )
 
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
@@ -347,8 +348,7 @@ defmodule WorthWeb.SettingsComponents do
             @routing.filter != "free_only" && "border-ctp-surface1 text-ctp-subtext0 hover:border-ctp-surface2"
           ]}
         >
-          <span>{if @routing.filter == "free_only", do: "●", else: "○"}</span>
-          Free models only
+          <span>{if @routing.filter == "free_only", do: "●", else: "○"}</span> Free models only
         </button>
       </div>
     </div>

@@ -144,16 +144,16 @@ defmodule Worth.Workspace.Learning do
            projects: project_mapping,
            since: agent_checkpoints
          ) do
-       {:ok, events} ->
-         {:ok, run_result} =
-           Mneme.learn(
-             scope_id: scope_id,
-             sources: [coding_agent_module()]
-           )
+      {:ok, events} ->
+        {:ok, run_result} =
+          Mneme.learn(
+            scope_id: scope_id,
+            sources: [coding_agent_module()]
+          )
 
-         coding_agents_result = Map.get(run_result.results, :coding_agents, %{})
-         Map.put(coding_agents_result, :events, events)
-     end
+        coding_agents_result = Map.get(run_result.results, :coding_agents, %{})
+        Map.put(coding_agents_result, :events, events)
+    end
   rescue
     e ->
       Logger.error("[Learning] Agent learning failed: #{Exception.message(e)}")

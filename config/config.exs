@@ -96,12 +96,7 @@ config :mneme,
     provider: Worth.Memory.Embeddings.Adapter,
     tier: :embeddings,
     dimensions: 1536,
-    credentials_fn: fn ->
-      case AgentEx.LLM.Credentials.resolve(AgentEx.LLM.Provider.OpenRouter) do
-        {:ok, %{api_key: key}} -> %{api_key: key}
-        _ -> :disabled
-      end
-    end
+    credentials_fn: &Worth.Memory.Embeddings.Adapter.credentials/0
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]

@@ -19,7 +19,8 @@ defmodule Worth.Application do
       Worth.Learning.TelemetryBridge,
       {Task.Supervisor, name: Worth.SkillInit, max_retries: 0},
       WorthWeb.Telemetry,
-      WorthWeb.Endpoint
+      WorthWeb.Endpoint,
+      Worth.Desktop.Bridge
     ]
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
@@ -50,6 +51,13 @@ defmodule Worth.Application do
         Task.Supervisor.start_child(Worth.SkillInit, fn ->
           AgentEx.LLM.Catalog.refresh()
         end)
+
+        if System.get_env("WORTH_DESKTOP") == "1" do
+          Task.Supervisor.start_child(Worth.SkillInit, fn ->
+            Process.sleep(500)
+            Worth.Desktop.Bridge.broadcast_ready(Worth.Boot.url())
+          end)
+        end
 
         {:ok, pid}
 

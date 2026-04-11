@@ -105,6 +105,7 @@ defmodule Mix.Tasks.Worth.Import do
 
         if result.errors != [] do
           Mix.shell().info("\nErrors encountered:")
+
           Enum.take(result.errors, 10)
           |> Enum.each(fn error ->
             Mix.shell().info("  - #{inspect(error)}")

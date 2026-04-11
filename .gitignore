@@ -11,3 +11,5 @@
 # Phoenix/assets build output
 /priv/static/assets/
 /priv/static/cache_manifest.json
+
+/rel/desktop/src-tauri/target/debug/

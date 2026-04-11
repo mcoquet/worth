@@ -11,9 +11,9 @@ defmodule Worth.Settings.Setting do
   import Ecto.Changeset
 
   schema "worth_settings" do
-    field :key, :string
-    field :encrypted_value, Worth.Encrypted.Binary
-    field :category, :string, default: "secret"
+    field(:key, :string)
+    field(:encrypted_value, Worth.Encrypted.Binary)
+    field(:category, :string, default: "secret")
     timestamps()
   end
 

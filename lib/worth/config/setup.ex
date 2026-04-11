@@ -47,7 +47,9 @@ defmodule Worth.Config.Setup do
     vault_value = vault_secret(@openrouter_env)
 
     case vault_value do
-      key when is_binary(key) and key != "" -> key
+      key when is_binary(key) and key != "" ->
+        key
+
       _ ->
         case Config.get([:secrets, @openrouter_env]) do
           nil -> System.get_env(@openrouter_env)

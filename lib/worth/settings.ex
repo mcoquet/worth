@@ -38,10 +38,12 @@ defmodule Worth.Settings do
       salt = Password.generate_salt()
       hash = Password.hash_password(password)
 
-      case Repo.insert(MasterPassword.changeset(%MasterPassword{}, %{
-        password_hash: hash,
-        key_salt: salt
-      })) do
+      case Repo.insert(
+             MasterPassword.changeset(%MasterPassword{}, %{
+               password_hash: hash,
+               key_salt: salt
+             })
+           ) do
         {:ok, _record} ->
           derived = Password.derive_key(password, salt)
           Vault.configure_key(derived)
@@ -108,7 +110,9 @@ defmodule Worth.Settings do
           # Re-encrypt all settings with the new key
           for {key, value, category} <- all_settings do
             case Repo.get_by(Setting, key: key) do
-              nil -> :ok
+              nil ->
+                :ok
+
               setting ->
                 setting
                 |> Setting.changeset(%{encrypted_value: value, category: category})
