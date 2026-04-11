@@ -48,12 +48,14 @@ defmodule WorthWeb.ChatLive do
        workspace_files: [],
        input_history: [],
        history_index: -1,
-       view: :chat,
+       view: if(Worth.Config.Setup.needs_setup?(), do: :onboarding, else: :chat),
+       onboarding_step: 1,
        has_history: prior_messages != [],
        settings_form: default_settings_form(),
        theme_module: Worth.Theme.Registry.resolve(),
        workspaces: list_workspaces(),
-       memory_stats: fetch_memory_stats(workspace)
+       memory_stats: fetch_memory_stats(workspace),
+       desktop_mode: System.get_env("WORTH_DESKTOP") == "1"
      )}
   end
 
@@ -325,6 +327,63 @@ defmodule WorthWeb.ChatLive do
   end
 
   def handle_event("keydown", _params, socket), do: {:noreply, socket}
+
+  def handle_event("quit_app", _params, socket) do
+    System.stop(0)
+    {:noreply, socket}
+  end
+
+  # ── Onboarding events ──────────────────────────────────────────
+
+  def handle_event("onboarding_save_dir", %{"home_directory" => path}, socket) do
+    case Worth.Config.Setup.set_home_directory(path) do
+      :ok ->
+        {:noreply, assign(socket, onboarding_step: 2)}
+
+      {:error, _} ->
+        {:noreply, assign(socket, onboarding_step: 1)}
+    end
+  end
+
+  def handle_event("onboarding_save_key", %{"api_key" => key}, socket) do
+    case Worth.Config.Setup.set_openrouter_key(key) do
+      :ok ->
+        # Also set default embedding model
+        Worth.Config.Setup.set_embedding_model(Worth.Config.Setup.default_embedding_model())
+
+        # Set default routing to auto/optimize_cost/free_only
+        routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
+        Application.put_env(:worth, :model_routing, routing)
+
+        {:noreply,
+         socket
+         |> assign(view: :chat, onboarding_step: 1)
+         |> load_settings_form()
+         |> append_system_message("Welcome to Worth! Setup complete. Type a message to get started.")}
+
+      {:error, _} ->
+        {:noreply, assign(socket, onboarding_step: 2)}
+    end
+  end
+
+  def handle_event("onboarding_skip_key", _params, socket) do
+    # Set embedding model even when skipping
+    Worth.Config.Setup.set_embedding_model(Worth.Config.Setup.default_embedding_model())
+
+    # Ensure home dir is set if not already
+    if is_nil(Worth.Config.Setup.home_directory()) do
+      Worth.Config.Setup.set_home_directory(Worth.Config.Setup.default_home_directory())
+    end
+
+    routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
+    Application.put_env(:worth, :model_routing, routing)
+
+    {:noreply,
+     socket
+     |> assign(view: :chat, onboarding_step: 1)
+     |> load_settings_form()
+     |> append_system_message("Welcome to Worth! You can add an API key later in Settings.")}
+  end
 
   # ── Settings events ────────────────────────────────────────────
 
@@ -951,7 +1010,7 @@ defmodule WorthWeb.ChatLive do
         %{mode: mode, preference: pref, filter: filter}
 
       _ ->
-        %{mode: "manual", preference: "optimize_price", filter: ""}
+        %{mode: "auto", preference: "optimize_price", filter: "free_only"}
     end
   end
 

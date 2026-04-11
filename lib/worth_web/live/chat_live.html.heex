@@ -4,7 +4,13 @@
 </style>
 <div id="theme-manager" phx-hook="ThemeManager" class="hidden"></div>
 
-<div class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
+<%!-- Onboarding view (full screen, no header/sidebar) --%>
+<div :if={@view == :onboarding} class="flex flex-col h-screen font-mono bg-ctp-base">
+  <.onboarding step={@onboarding_step} />
+</div>
+
+<%!-- Main app view --%>
+<div :if={@view != :onboarding} class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
   <%!-- Header --%>
   <.chat_header
     status={@status}
@@ -14,6 +20,7 @@
     cost={@cost}
     models={@models}
     active_agents={@active_agents}
+    desktop_mode={@desktop_mode}
   />
 
   <%!-- Body: left panel | chat | right sidebar --%>

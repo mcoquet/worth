@@ -17,6 +17,7 @@ defmodule WorthWeb.ChatComponents do
   attr :cost, :float, required: true
   attr :models, :map, required: true
   attr :active_agents, :list, default: []
+  attr :desktop_mode, :boolean, default: false
 
   def chat_header(assigns) do
     ~H"""
@@ -49,6 +50,16 @@ defmodule WorthWeb.ChatComponents do
       </span>
 
       <div class="flex-1" />
+
+      <button
+        :if={@desktop_mode}
+        phx-click="quit_app"
+        data-confirm="Quit Worth?"
+        class={"#{color(:text_muted)} hover:#{color(:error)} transition-colors cursor-pointer"}
+        title="Quit Worth"
+      >
+        <.icon name="hero-x-mark" class="w-4 h-4" />
+      </button>
     </header>
     """
   end
@@ -258,7 +269,19 @@ defmodule WorthWeb.ChatComponents do
         _ -> %{model_count: 0, providers: %{}}
       end
 
-    assigns = assign(assigns, :catalog_info, catalog_info)
+    coding_agents =
+      try do
+        Worth.CodingAgents.discover()
+      rescue
+        _ -> []
+      catch
+        :exit, _ -> []
+      end
+
+    assigns =
+      assigns
+      |> assign(:catalog_info, catalog_info)
+      |> assign(:coding_agents, coding_agents)
 
     ~H"""
     <div class="color(:text_muted) space-y-1">
@@ -281,8 +304,19 @@ defmodule WorthWeb.ChatComponents do
 
     <div :if={@catalog_info.providers != %{}} class="mt-3">
       <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Providers</div>
-      <div :for={{id, stat} <- @catalog_info.providers} class="text-xs color(:text_dim)">
+      <div :for={{id, stat} <- @catalog_info.providers} :if={stat.status != :no_creds} class="text-xs color(:text_dim)">
         {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
+      </div>
+    </div>
+
+    <div :if={@coding_agents != []} class="mt-3">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Coding Agents</div>
+      <div :for={agent <- @coding_agents} class="text-xs flex items-center gap-1">
+        <span class={if agent.available, do: "text-ctp-green", else: "color(:text_dim)"}>
+          {if agent.available, do: "●", else: "○"}
+        </span>
+        <span class="color(:text_muted)">{agent.display_name}</span>
+        <span class="color(:text_dim)">({agent.cli_name})</span>
       </div>
     </div>
     """
