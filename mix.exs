@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.1",
+      version: "0.2.1-alpha.2",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       package: [
@@ -57,11 +57,11 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.2.1"},
+      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.3.0"},
       # Local embedding support (optional - enables Mneme.Embedding.Local)
       {:bumblebee, "~> 0.6.0"},
       {:exla, ">= 0.0.0"},
-      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.2"},
+      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.3"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},
@@ -78,10 +78,9 @@ defmodule Worth.MixProject do
        github: "tailwindlabs/heroicons", tag: "v2.2.0", sparse: "optimized", app: false, compile: false, depth: 1},
 
       # Database
-      {:ecto_libsql, "~> 0.9"},
+      {:ecto_sqlite3, "~> 0.18"},
+      {:sqlite_vec, "~> 0.1"},
       {:ecto_sql, "~> 3.12"},
-      # pgvector types required by mneme schemas
-      {:pgvector, "~> 0.3"},
 
       # MCP
       {:hermes_mcp, "~> 0.14.1"},

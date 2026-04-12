@@ -32,5 +32,10 @@
 /rel/desktop/src-tauri/target/
 /rel/desktop/src-tauri/release/
 /rel/desktop/src-tauri/dist/
-
+!/rel/desktop/src-tauri/dist_splash.html
 erl_crash.dump
+
+# Test database
+worth_test.db
+worth_test.db-shm
+worth_test.db-wal

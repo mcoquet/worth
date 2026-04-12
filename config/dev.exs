@@ -8,12 +8,12 @@ worth_data_dev =
   end
 
 config :worth, Worth.Repo,
-  adapter: Ecto.Adapters.LibSQL,
+  adapter: Ecto.Adapters.SQLite3,
   database: Path.join(worth_data_dev, "worth_dev.db"),
   pool_size: 5
 
 config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL
+  database_adapter: Mneme.DatabaseAdapter.SQLiteVec
 
 config :worth, WorthWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],

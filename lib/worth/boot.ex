@@ -44,15 +44,13 @@ defmodule Worth.Boot do
   end
 
   def run_migrations! do
-    if Worth.Repo.libsql?() do
-      db_path = Application.get_env(:worth, Worth.Repo)[:database]
+    db_path = Application.get_env(:worth, Worth.Repo)[:database]
 
-      if db_path do
-        db_path |> Path.dirname() |> File.mkdir_p!()
-      end
-
-      Ecto.Migrator.run(Worth.Repo, :up, all: true)
+    if db_path do
+      db_path |> Path.dirname() |> File.mkdir_p!()
     end
+
+    Ecto.Migrator.run(Worth.Repo, :up, all: true)
   rescue
     e ->
       IO.warn("Migration failed: #{inspect(e)}")

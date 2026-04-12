@@ -1,15 +1,15 @@
 import Config
 
-# Test configuration uses libSQL (SQLite) for faster, simpler tests
+# Test configuration uses SQLite3 + sqlite-vec for faster, simpler tests
 # This avoids the need for a running PostgreSQL server during tests
 config :worth, Worth.Repo,
-  adapter: Ecto.Adapters.LibSQL,
+  adapter: Ecto.Adapters.SQLite3,
   database: "worth_test.db",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5
 
 config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL,
+  database_adapter: Mneme.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo,
   embedding: [
     provider: Mneme.Embedding.Mock,

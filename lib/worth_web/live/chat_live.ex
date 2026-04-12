@@ -908,10 +908,6 @@ defmodule WorthWeb.ChatLive do
     # Build personalized welcome
     message = build_welcome_message(profile)
 
-    # Subscribe to the workspace PubSub topic
-    topic = "workspace:#{workspace}"
-    Phoenix.PubSub.subscribe(Worth.PubSub, topic)
-
     {:noreply,
      socket
      |> assign(

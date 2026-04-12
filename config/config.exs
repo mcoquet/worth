@@ -60,15 +60,15 @@ config :worth,
 config :worth, Worth.Vault, ciphers: []
 
 # --- Database Configuration ---
-# Worth uses libSQL (SQLite) for zero-configuration local storage.
+# Worth uses SQLite3 + sqlite-vec for zero-configuration local storage.
 # Database lives in the OS-conventional data directory.
 config :worth, Worth.Repo,
-  adapter: Ecto.Adapters.LibSql,
+  adapter: Ecto.Adapters.SQLite3,
   database: Path.join(worth_data, "worth.db"),
   pool_size: 5
 
 config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL,
+  database_adapter: Mneme.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo
 
 # --- Mneme Core Configuration ---

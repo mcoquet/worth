@@ -2,8 +2,10 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
   @moduledoc """
   Creates all Mneme tables.
 
-  This migration supports both PostgreSQL (with pgvector) and libSQL/SQLite
-  (with native vector support). The adapter is detected at runtime.
+  This migration supports multiple database backends:
+  - PostgreSQL with pgvector extension
+  - SQLite with sqlite-vec extension
+  - libSQL with native vector support
   """
 
   use Ecto.Migration
@@ -147,34 +149,31 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
   # ── Helper Functions ────────────────────────────────────────────────
 
   defp detect_adapter do
-    # Check the repo configuration
     repo = Application.get_env(:mneme, :repo, Worth.Repo)
 
-    # Get adapter from config, defaulting to libSQL
-    # Try different config locations
     adapter =
       cond do
-        # Try :worth app config
         config = Application.get_env(:worth, repo) ->
-          Keyword.get(config, :adapter, Ecto.Adapters.LibSQL)
+          Keyword.get(config, :adapter, Ecto.Adapters.SQLite3)
 
-        # Try :mneme app config
         config = Application.get_env(:mneme, :database_adapter) ->
           case config do
             Mneme.DatabaseAdapter.Postgres -> Ecto.Adapters.Postgres
             Mneme.DatabaseAdapter.LibSQL -> Ecto.Adapters.LibSQL
-            _ -> Ecto.Adapters.LibSQL
+            Mneme.DatabaseAdapter.SQLiteVec -> Ecto.Adapters.SQLite3
+            _ -> Ecto.Adapters.SQLite3
           end
 
-        # Default
         true ->
-          Ecto.Adapters.LibSQL
+          Ecto.Adapters.SQLite3
       end
 
     cond do
       adapter == Ecto.Adapters.Postgres -> :postgres
       adapter == Ecto.Adapters.LibSQL -> :libsql
-      true -> :libsql
+      adapter == Ecto.Adapters.SQLite3 -> :sqlite
+      # Fallback for unknown adapters
+      true -> :sqlite
     end
   end
 
@@ -182,7 +181,6 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
   defp uuid_type(_), do: :string
 
   defp create_chunks_table(adapter) do
-    # Common columns
     create table(:mneme_chunks, primary_key: false) do
       add(:id, :binary_id, primary_key: true)
       add(:sequence, :integer)
@@ -197,23 +195,27 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
 
       add(:document_id, references(:mneme_documents, type: :binary_id, on_delete: :delete_all), null: false)
 
-      # Use timestamps without default for libSQL compatibility
       timestamps(updated_at: false)
     end
 
     # Add vector column and indexes based on adapter
-    if adapter == :postgres do
-      execute("ALTER TABLE mneme_chunks ADD COLUMN embedding vector(768)")
+    case adapter do
+      :postgres ->
+        execute("ALTER TABLE mneme_chunks ADD COLUMN embedding vector(768)")
 
-      execute("""
-      CREATE INDEX mneme_chunks_embedding_idx ON mneme_chunks
-      USING hnsw (embedding vector_cosine_ops)
-      WITH (m = 16, ef_construction = 64)
-      """)
-    else
-      # libSQL uses F32_BLOB for vectors
-      execute("ALTER TABLE mneme_chunks ADD COLUMN embedding F32_BLOB(768)")
-      execute("CREATE INDEX mneme_chunks_embedding_idx ON mneme_chunks (libsql_vector_idx(embedding))")
+        execute("""
+        CREATE INDEX mneme_chunks_embedding_idx ON mneme_chunks
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
+        """)
+
+      :libsql ->
+        execute("ALTER TABLE mneme_chunks ADD COLUMN embedding F32_BLOB(768)")
+        execute("CREATE INDEX mneme_chunks_embedding_idx ON mneme_chunks (libsql_vector_idx(embedding))")
+
+      :sqlite ->
+        # sqlite-vec: store embeddings as TEXT (JSON arrays)
+        execute("ALTER TABLE mneme_chunks ADD COLUMN embedding TEXT")
     end
 
     create(index(:mneme_chunks, [:document_id]))
@@ -245,17 +247,22 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
     end
 
     # Add vector column and indexes based on adapter
-    if adapter == :postgres do
-      execute("ALTER TABLE mneme_entities ADD COLUMN embedding vector(768)")
+    case adapter do
+      :postgres ->
+        execute("ALTER TABLE mneme_entities ADD COLUMN embedding vector(768)")
 
-      execute("""
-      CREATE INDEX mneme_entities_embedding_idx ON mneme_entities
-      USING hnsw (embedding vector_cosine_ops)
-      WITH (m = 16, ef_construction = 64)
-      """)
-    else
-      execute("ALTER TABLE mneme_entities ADD COLUMN embedding F32_BLOB(768)")
-      execute("CREATE INDEX mneme_entities_embedding_idx ON mneme_entities (libsql_vector_idx(embedding))")
+        execute("""
+        CREATE INDEX mneme_entities_embedding_idx ON mneme_entities
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
+        """)
+
+      :libsql ->
+        execute("ALTER TABLE mneme_entities ADD COLUMN embedding F32_BLOB(768)")
+        execute("CREATE INDEX mneme_entities_embedding_idx ON mneme_entities (libsql_vector_idx(embedding))")
+
+      :sqlite ->
+        execute("ALTER TABLE mneme_entities ADD COLUMN embedding TEXT")
     end
 
     create(unique_index(:mneme_entities, [:collection_id, :name, :entity_type]))
@@ -264,9 +271,6 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
   end
 
   defp create_entries_table(adapter) do
-    # Note: Additional columns (half_life_days, pinned, emotional_valence,
-    # schema_fit, outcome_score, confidence_state, context_hints) are added
-    # by a later migration (20250407000000_add_memory_enhancements.exs)
     create table(:mneme_entries, primary_key: false) do
       add(:id, :binary_id, primary_key: true)
       add(:scope_id, uuid_type(adapter))
@@ -280,23 +284,27 @@ defmodule Mneme.Repo.Migrations.CreateMnemeTables do
       add(:access_count, :integer, default: 0)
       add(:last_accessed_at, :utc_datetime_usec)
       add(:confidence, :float, default: 1.0)
-      # Base columns only - enhancements added by 20250407000000_add_memory_enhancements.exs
       add(:embedding_model_id, :string)
       timestamps(type: :utc_datetime_usec)
     end
 
     # Add vector column and indexes based on adapter
-    if adapter == :postgres do
-      execute("ALTER TABLE mneme_entries ADD COLUMN embedding vector(768)")
+    case adapter do
+      :postgres ->
+        execute("ALTER TABLE mneme_entries ADD COLUMN embedding vector(768)")
 
-      execute("""
-      CREATE INDEX mneme_entries_embedding_idx ON mneme_entries
-      USING hnsw (embedding vector_cosine_ops)
-      WITH (m = 16, ef_construction = 64)
-      """)
-    else
-      execute("ALTER TABLE mneme_entries ADD COLUMN embedding F32_BLOB(768)")
-      execute("CREATE INDEX mneme_entries_embedding_idx ON mneme_entries (libsql_vector_idx(embedding))")
+        execute("""
+        CREATE INDEX mneme_entries_embedding_idx ON mneme_entries
+        USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
+        """)
+
+      :libsql ->
+        execute("ALTER TABLE mneme_entries ADD COLUMN embedding F32_BLOB(768)")
+        execute("CREATE INDEX mneme_entries_embedding_idx ON mneme_entries (libsql_vector_idx(embedding))")
+
+      :sqlite ->
+        execute("ALTER TABLE mneme_entries ADD COLUMN embedding TEXT")
     end
 
     create(index(:mneme_entries, [:scope_id]))

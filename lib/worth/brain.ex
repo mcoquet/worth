@@ -441,12 +441,18 @@ defmodule Worth.Brain do
 
     %{
       llm_chat: fn params ->
-        on_chunk = fn text_delta ->
-          broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
-        end
+        # Internal calls (e.g., model router classification) should not stream to UI
+        if params["internal"] do
+          params = maybe_inject_manual_model(params)
+          Worth.LLM.stream_chat(params, state.config, fn _chunk -> :ok end)
+        else
+          on_chunk = fn text_delta ->
+            broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
+          end
 
-        params = maybe_inject_manual_model(params)
-        Worth.LLM.stream_chat(params, state.config, on_chunk)
+          params = maybe_inject_manual_model(params)
+          Worth.LLM.stream_chat(params, state.config, on_chunk)
+        end
       end,
       on_event: fn event, _ctx ->
         broadcast_workspace(workspace, {:agent_event, event})
