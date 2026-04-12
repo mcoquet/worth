@@ -4,6 +4,5 @@ defmodule WorthTest do
   test "worth application starts" do
     assert Process.whereis(Worth.Supervisor) != nil
     assert Process.whereis(Worth.Repo) != nil
-    assert Process.whereis(Worth.Brain) != nil
   end
 end

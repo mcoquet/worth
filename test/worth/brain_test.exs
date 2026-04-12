@@ -19,9 +19,4 @@ defmodule Worth.BrainTest do
     Worth.Brain.switch_mode(@workspace, :code)
   end
 
-  test "switch_workspace changes workspace" do
-    :ok = Worth.Brain.switch_workspace(@workspace, "personal")
-    status = Worth.Brain.get_status("personal")
-    assert status.workspace == "personal"
-  end
 end

@@ -57,8 +57,11 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.2.0", override: true},
-      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.1"},
+      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", override: true},
+      # Local embedding support (optional - enables Mneme.Embedding.Local)
+      {:bumblebee, "~> 0.6.0"},
+      {:exla, ">= 0.0.0"},
+      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},

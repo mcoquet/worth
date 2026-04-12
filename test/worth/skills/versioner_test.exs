@@ -26,7 +26,15 @@ defmodule Worth.Skill.VersionerTest do
 
     File.write!(Path.join(skill_dir, "SKILL.md"), skill_content)
 
-    user_skills = Worth.Skill.Paths.user_dir()
+    # Ensure the "personal" workspace exists for path resolution
+    ws_path = Worth.Workspace.Service.resolve_path("personal")
+    File.mkdir_p!(Path.join(ws_path, ".worth/skills"))
+
+    unless File.exists?(Path.join(ws_path, "IDENTITY.md")) do
+      File.write!(Path.join(ws_path, "IDENTITY.md"), "# personal\n")
+    end
+
+    user_skills = Worth.Skill.Paths.user_dir("personal")
     dest = Path.join(user_skills, "versioner-test-skill")
 
     File.rm_rf(dest)
