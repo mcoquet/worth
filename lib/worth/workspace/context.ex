@@ -27,7 +27,7 @@ defmodule Worth.Workspace.Context do
   defp load_base_prompt do
     case File.read(@system_prompt_path) do
       {:ok, content} -> String.trim(content)
-      {:error, _} -> "You are worth, a terminal-based AI assistant."
+      {:error, _} -> "You are Worth, a personal AI assistant that helps with development, research, and automation."
     end
   end
 

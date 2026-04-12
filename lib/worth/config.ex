@@ -33,10 +33,9 @@ defmodule Worth.Config do
   # On startup, sync any user settings from disk to Application env
   # so that code using Application.get_env(:worth, :key) sees them
   defp sync_disk_to_application_env(disk) do
-    # home_directory - this affects where skills, workspaces, etc. are stored
-    case disk[:home_directory] do
+    case disk[:workspace_directory] do
       nil -> :ok
-      path when is_binary(path) -> Application.put_env(:worth, :home_directory, path)
+      path when is_binary(path) -> Application.put_env(:worth, :workspace_directory, path)
     end
   end
 
@@ -87,8 +86,8 @@ defmodule Worth.Config do
 
   # Sync critical config values to Application env so other parts of the
   # system can access them via Application.get_env(:worth, :key)
-  defp sync_to_application_env([:home_directory], value) when is_binary(value) do
-    Application.put_env(:worth, :home_directory, value)
+  defp sync_to_application_env([:workspace_directory], value) when is_binary(value) do
+    Application.put_env(:worth, :workspace_directory, value)
   end
 
   defp sync_to_application_env(_path, _value), do: :ok
@@ -102,7 +101,11 @@ defmodule Worth.Config do
     System.put_env(env_var, value)
 
     if vault_available?() do
-      Worth.Settings.put(env_var, value, "secret")
+      case Worth.Settings.put(env_var, value, "secret") do
+        {:ok, _setting} -> :ok
+        :ok -> :ok
+        error -> error
+      end
     else
       put_setting([:secrets, env_var], value)
     end

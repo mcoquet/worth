@@ -2,21 +2,9 @@ defmodule Worth.Config.Setup do
   @moduledoc """
   High-level setup operations for Worth.
 
-  Two surfaces use this module:
-
-    * `Worth.CLI` runs `maybe_run_first_run!/0` before launching the TUI.
-      If the on-disk config is missing required keys it drops into a
-      stdin-based wizard. Stdin must still belong to the user at this
-      point — `install_tui_logger/0` has not yet swallowed it.
-
-    * `Worth.UI.Commands` exposes a `/setup` slash command that calls
-      `set_openrouter_key/1` and `set_embedding_model/1` directly. The
-      TUI owns stdin while running, so the slash command takes the value
-      as an argument rather than prompting.
-
   Required keys for a usable Worth install:
 
-    * `:home_directory` — root directory for Worth's work (e.g., "~/work")
+    * `:workspace_directory` — root directory for user workspaces (e.g., "~/work")
     * `[:secrets, "OPENROUTER_API_KEY"]` — chat + embeddings provider
     * `[:memory, :embedding_model]` — model id passed to the embeddings
       adapter (e.g. `"openai/text-embedding-3-small"` via OpenRouter)
@@ -25,21 +13,20 @@ defmodule Worth.Config.Setup do
   alias Worth.Config
 
   @openrouter_env "OPENROUTER_API_KEY"
-  @default_embedding_model "openai/text-embedding-3-small"
-  @default_home_directory "~/work"
+  @default_embedding_model "local/all-MiniLM-L6-v2"
 
   @doc "True if Worth is missing any required configuration."
   def needs_setup? do
-    is_nil(home_directory()) or is_nil(openrouter_key()) or is_nil(embedding_model())
+    is_nil(workspace_directory()) or is_nil(openrouter_key())
   end
 
-  @doc "Currently configured home directory, or nil."
-  def home_directory do
-    Config.get(:home_directory)
+  @doc "Currently configured workspace directory, or nil."
+  def workspace_directory do
+    Config.get(:workspace_directory)
   end
 
-  @doc "Default home directory suggested in the wizard."
-  def default_home_directory, do: @default_home_directory
+  @doc "Default workspace directory suggested in the wizard."
+  def default_workspace_directory, do: Worth.Paths.default_workspace_dir()
 
   @doc "Currently configured OpenRouter API key, or nil."
   def openrouter_key do
@@ -85,9 +72,6 @@ defmodule Worth.Config.Setup do
 
       trimmed ->
         :ok = Config.put_secret(@openrouter_env, trimmed)
-        # The catalog's initial refresh likely ran before this key was
-        # in the env. Kick another refresh so models become resolvable
-        # without waiting for the next 10-minute scheduled tick.
         _ = safe_catalog_refresh()
         :ok
     end
@@ -101,15 +85,15 @@ defmodule Worth.Config.Setup do
     end
   end
 
-  @doc "Persist the home directory path."
-  def set_home_directory(path) when is_binary(path) do
+  @doc "Persist the workspace directory path."
+  def set_workspace_directory(path) when is_binary(path) do
     case String.trim(path) do
       "" ->
         {:error, :empty_path}
 
       trimmed ->
         expanded = Path.expand(trimmed)
-        Config.put_setting([:home_directory], expanded)
+        Config.put_setting([:workspace_directory], expanded)
     end
   end
 
@@ -126,8 +110,7 @@ defmodule Worth.Config.Setup do
   end
 
   @doc """
-  Force-run the wizard regardless of state. Used when the user passes
-  `--setup` or wants to reconfigure from the command line.
+  Force-run the wizard regardless of state.
   """
   def run_wizard! do
     IO.puts("")
@@ -135,7 +118,7 @@ defmodule Worth.Config.Setup do
     IO.puts("Config will be saved to #{Worth.Config.Store.path()} (plain text, 0600).")
     IO.puts("")
 
-    prompt_home_directory()
+    prompt_workspace_directory()
     prompt_openrouter_key()
     prompt_embedding_model()
 
@@ -145,22 +128,22 @@ defmodule Worth.Config.Setup do
     :ok
   end
 
-  defp prompt_home_directory do
-    current = home_directory() || @default_home_directory
-    has_current = not is_nil(home_directory())
+  defp prompt_workspace_directory do
+    current = workspace_directory() || Worth.Paths.default_workspace_dir()
+    has_current = not is_nil(workspace_directory())
     label = if has_current, do: " [keep current]", else: ""
 
-    case ask("Worth home directory (root for all work)#{label}: ") do
+    case ask("Workspace directory (root for all workspaces)#{label}: ") do
       "" ->
         if has_current do
           :ok
         else
-          :ok = set_home_directory(current)
+          :ok = set_workspace_directory(current)
           IO.puts("  Using #{current}.")
         end
 
       value ->
-        :ok = set_home_directory(value)
+        :ok = set_workspace_directory(value)
         IO.puts("  Saved.")
     end
   end

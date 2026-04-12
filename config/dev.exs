@@ -1,8 +1,15 @@
 import Config
 
+worth_data_dev =
+  case :os.type() do
+    {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
+    {:win32, _} -> System.get_env("LOCALAPPDATA", Path.expand("~/.local/share")) |> Path.join("worth")
+    {:unix, _} -> System.get_env("XDG_DATA_HOME", Path.expand("~/.local/share")) |> Path.join("worth")
+  end
+
 config :worth, Worth.Repo,
   adapter: Ecto.Adapters.LibSQL,
-  database: Path.expand("~/.worth/worth_dev.db"),
+  database: Path.join(worth_data_dev, "worth_dev.db"),
   pool_size: 5
 
 config :mneme,

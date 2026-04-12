@@ -2,58 +2,17 @@ defmodule Worth.Config.Store do
   @moduledoc """
   On-disk persistence for Worth's user-level config.
 
-  The config file is ALWAYS stored at ~/.worth/config.exs, regardless of
-  the configured home_directory. This ensures the config can be found at
-  boot time before the home_directory setting is loaded.
-
-  The file is a single Elixir map literal evaluated with `Code.eval_file/1`.
-  No `Mix.Config` DSL — just plain data, written by Worth and read back at
-  boot. Secrets are currently stored **in plain text** with `0600`
-  permissions; encryption-at-rest is a planned follow-up.
+  The config file lives inside the data directory (OS-conventional,
+  auto-detected by `Worth.Paths.data_dir/0`). The file is a single
+  Elixir map literal evaluated with `Code.eval_file/1`.
 
   This module is the only place that touches the file. Higher-level callers
   go through `Worth.Config` (in-memory) and `Worth.Config.Setup` (mutations).
   """
 
-  # Fixed location for config file - this is the source of truth
-  @config_path Path.expand("~/.worth/config.exs")
-
-  @doc "Absolute path to the config file. Always ~/.worth/config.exs"
-  def path, do: @config_path
-
-  @doc """
-  The Worth home directory (configurable via settings, defaults to ~/.worth).
-
-  This is read from:
-  1. The config file if set there
-  2. Application env (config/*.exs) as fallback
-  3. Defaults to ~/.worth
-  """
-  def home_directory do
-    # First try to read from the already-loaded runtime config
-    case Process.whereis(Worth.Config) do
-      nil ->
-        # Config not loaded yet, check the file directly or use default
-        load_home_directory_from_file_or_env()
-
-      _pid ->
-        # Config is loaded, use the runtime value
-        Worth.Config.get(:home_directory) || load_home_directory_from_file_or_env()
-    end
-  end
-
-  defp load_home_directory_from_file_or_env do
-    # Check if home_directory is set in the config file
-    disk_config = load()
-
-    case disk_config[:home_directory] do
-      nil ->
-        # Fall back to Application env, then default
-        Application.get_env(:worth, :home_directory, "~/.worth") |> Path.expand()
-
-      path when is_binary(path) ->
-        Path.expand(path)
-    end
+  @doc "Absolute path to the config file inside the data directory."
+  def path do
+    Path.join(Worth.Paths.data_dir(), "config.exs")
   end
 
   @doc "True if the config file exists on disk."

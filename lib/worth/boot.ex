@@ -6,16 +6,16 @@ defmodule Worth.Boot do
 
   def run(opts \\ []) do
     Worth.Config.Setup.maybe_run_first_run!()
-    ensure_home_directory!()
+    ensure_directories!()
 
     workspace = Keyword.get(opts, :workspace, "personal")
     mode = parse_mode(Keyword.get(opts, :mode, "code"))
 
-    workspace_path = Path.expand("workspaces/#{workspace}", Worth.Config.Store.home_directory())
+    workspace_path = Worth.Workspace.Service.resolve_path(workspace)
 
     if !File.dir?(workspace_path) do
-      IO.puts("Workspace '#{workspace}' not found. Creating in #{Worth.Config.Store.home_directory()}...")
-      File.mkdir_p!(workspace_path)
+      IO.puts("Workspace '#{workspace}' not found. Creating...")
+      Worth.Workspace.Service.create(workspace)
     end
 
     Application.put_env(:worth, :current_workspace, workspace)
@@ -64,13 +64,8 @@ defmodule Worth.Boot do
   defp parse_mode("turn_by_turn"), do: :turn_by_turn
   defp parse_mode(_), do: :code
 
-  defp ensure_home_directory! do
-    home = Worth.Config.Store.home_directory()
-    expanded = Path.expand(home)
-
-    if !File.dir?(expanded) do
-      IO.puts("Creating home directory: #{expanded}")
-      File.mkdir_p!(expanded)
-    end
+  defp ensure_directories! do
+    Worth.Paths.ensure_data_dir!()
+    Worth.Paths.ensure_workspace_dir!()
   end
 end

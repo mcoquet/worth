@@ -1,5 +1,13 @@
 import Config
 
+# --- Data directory (OS-conventional, auto-detected) ---
+worth_data =
+  case :os.type() do
+    {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
+    {:win32, _} -> System.get_env("LOCALAPPDATA", Path.expand("~/.local/share")) |> Path.join("worth")
+    {:unix, _} -> System.get_env("XDG_DATA_HOME", Path.expand("~/.local/share")) |> Path.join("worth")
+  end
+
 # --- AgentEx ---
 config :agent_ex,
   providers: [
@@ -7,14 +15,14 @@ config :agent_ex,
     AgentEx.LLM.Provider.Anthropic,
     AgentEx.LLM.Provider.OpenAI
   ],
-  catalog: [persist_path: "~/work/catalog.json"]
+  catalog: [persist_path: Path.join(worth_data, "catalog.json")]
 
 # --- Worth core ---
 config :worth,
   ecto_repos: [Worth.Repo],
   generators: [timestamp_type: :utc_datetime],
-  # Default home directory - users can override via UI settings
-  home_directory: "~/.worth",
+  # Default workspace directory - users can override via UI settings
+  workspace_directory: "~/work",
   llm: [
     default_provider: :anthropic,
     providers: %{
@@ -48,12 +56,11 @@ config :worth,
 config :worth, Worth.Vault, ciphers: []
 
 # --- Database Configuration ---
-# Worth uses libSQL (SQLite) for zero-configuration local storage
-worth_home = System.get_env("WORTH_HOME", Path.expand("~/.worth"))
-
+# Worth uses libSQL (SQLite) for zero-configuration local storage.
+# Database lives in the OS-conventional data directory.
 config :worth, Worth.Repo,
   adapter: Ecto.Adapters.LibSql,
-  database: Path.join(worth_home, "worth.db"),
+  database: Path.join(worth_data, "worth.db"),
   pool_size: 5
 
 config :mneme,
@@ -61,15 +68,17 @@ config :mneme,
   repo: Worth.Repo
 
 # --- Mneme Core Configuration ---
+# Default: local embeddings via Bumblebee (all-MiniLM-L6-v2, 384-dim).
+# Model is downloaded on first start. No API key needed.
 config :mneme,
   embedding: [
-    provider: Worth.Memory.Embeddings.Adapter,
-    tier: :embeddings,
-    dimensions: 1536,
-    credentials_fn: &Worth.Memory.Embeddings.Adapter.credentials/0
+    provider: Mneme.Embedding.Local
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
+
+# --- Nx (required for local embeddings) ---
+config :nx, default_backend: EXLA.Backend
 
 # --- Phoenix Endpoint ---
 config :worth, WorthWeb.Endpoint,

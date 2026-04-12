@@ -4,8 +4,6 @@ defmodule Worth.LogHandler do
   and tees them to a plain-text file for external inspection.
   """
 
-  alias Worth.Config.Store
-
   @default_relpath "logs/worth.log"
 
   def log(%{level: level, msg: msg, meta: meta}, _config) do
@@ -21,8 +19,8 @@ defmodule Worth.LogHandler do
   def file_path do
     base =
       case System.get_env("WORTH_LOG_FILE") do
-        nil -> Path.expand(@default_relpath, Store.home_directory())
-        "" -> Path.expand(@default_relpath, Store.home_directory())
+        nil -> Path.expand(@default_relpath, Worth.Paths.data_dir())
+        "" -> Path.expand(@default_relpath, Worth.Paths.data_dir())
         explicit -> Path.expand(explicit)
       end
 
@@ -31,8 +29,8 @@ defmodule Worth.LogHandler do
 
   def base_path do
     case System.get_env("WORTH_LOG_FILE") do
-      nil -> Path.expand(@default_relpath, Store.home_directory())
-      "" -> Path.expand(@default_relpath, Store.home_directory())
+      nil -> Path.expand(@default_relpath, Worth.Paths.data_dir())
+      "" -> Path.expand(@default_relpath, Worth.Paths.data_dir())
       explicit -> Path.expand(explicit)
     end
   end

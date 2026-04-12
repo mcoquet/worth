@@ -276,7 +276,7 @@ defmodule Worth.Workspace.Learning do
     try do
       _skill_name = item.path |> Path.dirname() |> Path.basename()
 
-      case Worth.Skill.Service.install(%{type: :local, path: Path.dirname(item.path)}, []) do
+      case Worth.Skill.Service.install(%{type: :local, path: Path.dirname(item.path)}, workspace: workspace_name) do
         {:ok, installed_name} ->
           # Record that we indexed this
           entry_attrs = %{
@@ -469,7 +469,8 @@ defmodule Worth.Workspace.Learning do
     end
   end
 
-  defp workspace_scope_id(workspace_name) do
+  @doc "Generate a deterministic UUID scope for a workspace name."
+  def workspace_scope_id(workspace_name) do
     # Generate a deterministic UUID for the workspace scope
     # In production, you might want to store this in a workspace record
     base = "workspace:#{workspace_name}"

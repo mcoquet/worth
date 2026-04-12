@@ -1,13 +1,11 @@
 defmodule Worth.Mcp.Config do
-  alias Worth.Config.Store
-
   def load(workspace_path \\ nil) do
     global = load_global()
     workspace = load_workspace(workspace_path)
     Map.merge(global, workspace)
   end
 
-  defp global_config_path, do: Path.expand("config.exs", Store.home_directory())
+  defp global_config_path, do: Worth.Config.Store.path()
 
   def server_names(workspace_path \\ nil) do
     load(workspace_path) |> Map.keys()

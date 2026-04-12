@@ -3,11 +3,19 @@ defmodule Worth.Skill.Service do
 
   def list(opts \\ []) do
     core = list_core_skills()
-    user = list_user_skills()
+    workspace = opts[:workspace]
+
+    user =
+      if workspace do
+        list_workspace_skills(workspace)
+      else
+        # List skills from all workspaces
+        Worth.Workspace.Service.list()
+        |> Enum.flat_map(&list_workspace_skills/1)
+        |> Enum.uniq_by(& &1.name)
+      end
 
     all = core ++ user
-
-    workspace = opts[:workspace]
 
     if workspace do
       filter_for_workspace(all, workspace)
@@ -16,15 +24,17 @@ defmodule Worth.Skill.Service do
     end
   end
 
-  def read(name) do
-    case Paths.resolve(name) do
+  def read(name, opts \\ []) do
+    workspace = opts[:workspace]
+
+    case Paths.resolve(name, workspace) do
       nil -> {:error, "Skill '#{name}' not found"}
       dir -> Worth.Skill.Parser.parse_file(Path.join(dir, "SKILL.md"))
     end
   end
 
-  def read_body(name) do
-    case read(name) do
+  def read_body(name, opts \\ []) do
+    case read(name, opts) do
       {:ok, skill} -> {:ok, skill.body}
       error -> error
     end
@@ -32,13 +42,16 @@ defmodule Worth.Skill.Service do
 
   def install(source, opts \\ [])
 
-  def install(%{type: :local, path: path}, _opts) do
+  def install(%{type: :local, path: path}, opts) do
+    workspace = opts[:workspace] || current_workspace()
     name = Path.basename(path)
-    dest = Path.join(Paths.user_dir(), name)
+    dest = Path.join(Paths.user_dir(workspace), name)
 
     if File.dir?(dest) do
       {:error, "Skill '#{name}' already installed"}
     else
+      File.mkdir_p!(Path.dirname(dest))
+
       case File.cp_r(path, dest) do
         {:ok, _} ->
           Worth.Skill.Registry.refresh()
@@ -51,6 +64,7 @@ defmodule Worth.Skill.Service do
   end
 
   def install(%{type: :content, name: name, content: content}, opts) do
+    workspace = opts[:workspace] || current_workspace()
     trust_level = Keyword.get(opts, :trust_level, :learned)
     provenance = Keyword.get(opts, :provenance, :agent)
 
@@ -83,7 +97,7 @@ defmodule Worth.Skill.Service do
 
     case Worth.Skill.Validator.validate(skill) do
       {:ok, _} ->
-        dest = Path.join(Paths.user_dir(), name)
+        dest = Path.join(Paths.user_dir(workspace), name)
         File.mkdir_p!(dest)
         skill_md = Worth.Skill.Parser.to_frontmatter_string(skill)
         File.write!(Path.join(dest, "SKILL.md"), skill_md)
@@ -95,8 +109,9 @@ defmodule Worth.Skill.Service do
     end
   end
 
-  def remove(name) do
-    path = Paths.resolve(name)
+  def remove(name, opts \\ []) do
+    workspace = opts[:workspace] || current_workspace()
+    path = Paths.resolve(name, workspace)
 
     cond do
       path == nil ->
@@ -117,13 +132,15 @@ defmodule Worth.Skill.Service do
     end
   end
 
-  def exists?(name) do
-    Paths.resolve(name) != nil
+  def exists?(name, opts \\ []) do
+    workspace = opts[:workspace]
+    Paths.resolve(name, workspace) != nil
   end
 
-  def record_usage(name, success?) do
-    case read(name) do
+  def record_usage(name, success?, opts \\ []) do
+    case read(name, opts) do
       {:ok, skill} ->
+        workspace = opts[:workspace] || current_workspace()
         evolution = skill.evolution
         now = DateTime.utc_now() |> DateTime.to_iso8601()
 
@@ -142,7 +159,7 @@ defmodule Worth.Skill.Service do
               })
         }
 
-        case Paths.resolve(name) do
+        case Paths.resolve(name, workspace) do
           nil ->
             {:error, "Skill '#{name}' not found"}
 
@@ -173,9 +190,9 @@ defmodule Worth.Skill.Service do
     end
   end
 
-  defp list_user_skills do
-    dir = Paths.user_dir()
-    learned_dir = Paths.learned_dir()
+  defp list_workspace_skills(workspace) do
+    dir = Paths.user_dir(workspace)
+    learned_dir = Paths.learned_dir(workspace)
 
     skills =
       if File.dir?(dir) do
@@ -266,5 +283,9 @@ defmodule Worth.Skill.Service do
           s.trust_level == :core or MapSet.member?(active_set, s.name)
         end)
     end
+  end
+
+  defp current_workspace do
+    Application.get_env(:worth, :current_workspace, "personal")
   end
 end

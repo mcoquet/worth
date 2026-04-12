@@ -1,13 +1,12 @@
 defmodule Worth.Workspace.Service do
-  alias Worth.Config.Store
-
   def list do
-    dir = Path.expand("workspaces", Store.home_directory())
+    dir = Worth.Paths.workspace_dir()
 
     if File.dir?(dir) do
       File.ls!(dir)
       |> Enum.filter(fn name ->
-        Path.join(dir, name) |> File.dir?()
+        path = Path.join(dir, name)
+        File.dir?(path) and File.exists?(Path.join(path, "IDENTITY.md"))
       end)
       |> Enum.sort()
     else
@@ -16,7 +15,7 @@ defmodule Worth.Workspace.Service do
   end
 
   def create(name, opts \\ []) do
-    dir = Path.expand("workspaces", Store.home_directory())
+    dir = Worth.Paths.workspace_dir()
     workspace_path = Path.join(dir, name)
     workspace_type = Keyword.get(opts, :type, :code)
 
@@ -25,6 +24,7 @@ defmodule Worth.Workspace.Service do
     else
       File.mkdir_p!(workspace_path)
       File.mkdir_p!(Path.join(workspace_path, ".worth"))
+      File.mkdir_p!(Path.join(workspace_path, ".worth/skills"))
 
       write_identity(workspace_path, name, workspace_type)
       write_agents_md(workspace_path, workspace_type)
@@ -34,8 +34,73 @@ defmodule Worth.Workspace.Service do
     end
   end
 
+  @doc """
+  Create the personal workspace — the user's home base.
+
+  Accepts a profile map with `:name`, `:role`, and `:goals` keys.
+  Generates a rich IDENTITY.md with frontmatter and user profile sections.
+  If the workspace already exists, updates the IDENTITY.md in place.
+  """
+  def create_personal(profile \\ %{}) do
+    dir = Worth.Paths.workspace_dir()
+    workspace_path = Path.join(dir, "personal")
+
+    File.mkdir_p!(workspace_path)
+    File.mkdir_p!(Path.join(workspace_path, ".worth"))
+    File.mkdir_p!(Path.join(workspace_path, ".worth/skills"))
+
+    write_personal_identity(workspace_path, profile)
+    write_agents_md(workspace_path, :general)
+    write_skills_json(workspace_path)
+
+    {:ok, workspace_path}
+  end
+
   def resolve_path(name) do
-    Path.expand(Path.join("workspaces", name), Store.home_directory())
+    Path.join(Worth.Paths.workspace_dir(), name)
+  end
+
+  defp write_personal_identity(path, profile) do
+    name = Map.get(profile, :name, "")
+    role = Map.get(profile, :role, "")
+    goals = Map.get(profile, :goals, "")
+
+    about_section =
+      if name != "" or role != "" or goals != "" do
+        lines = []
+        lines = if name != "", do: lines ++ ["- **Name**: #{name}"], else: lines
+        lines = if role != "", do: lines ++ ["- **Role**: #{role}"], else: lines
+        lines = if goals != "", do: lines ++ ["- **Goals**: #{goals}"], else: lines
+
+        """
+
+        ## About You
+        #{Enum.join(lines, "\n")}
+        """
+      else
+        ""
+      end
+
+    content = """
+    ---
+    name: personal
+    llm:
+      prefer_free: true
+      prompt_caching: true
+    ---
+
+    # Personal
+
+    Your home workspace — the place from where you coordinate everything.
+    #{about_section}
+    ## How This Workspace Works
+
+    This is your personal workspace. It's your home base — use it to think, plan,
+    coordinate work across projects, and have general conversations. You can create
+    additional workspaces for specific projects later.
+    """
+
+    File.write!(Path.join(path, "IDENTITY.md"), String.trim(content) <> "\n")
   end
 
   defp write_identity(path, name, :code) do
