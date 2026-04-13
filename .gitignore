@@ -31,6 +31,7 @@
 # Tauri build artifacts (ignore build output)
 /rel/desktop/src-tauri/target/
 /rel/desktop/src-tauri/release/
+/rel/desktop/src-tauri/rel-*/
 /rel/desktop/src-tauri/dist/
 !/rel/desktop/src-tauri/dist_splash.html
 erl_crash.dump

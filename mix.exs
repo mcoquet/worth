@@ -60,7 +60,7 @@ defmodule Worth.MixProject do
       {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.3.0"},
       # Local embedding support (optional - enables Mneme.Embedding.Local)
       {:bumblebee, "~> 0.6.0"},
-      {:exla, ">= 0.0.0"},
+      {:torchx, ">= 0.0.0"},
       {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.3"},
 
       # Phoenix

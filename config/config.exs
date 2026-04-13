@@ -82,7 +82,7 @@ config :mneme,
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
 
 # --- Nx (required for local embeddings) ---
-config :nx, default_backend: EXLA.Backend
+config :nx, default_backend: Torchx.Backend
 
 # --- Phoenix Endpoint ---
 config :worth, WorthWeb.Endpoint,

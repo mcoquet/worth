@@ -28,15 +28,19 @@ jobs:
           - platform: macos-arm64
             os: macos-latest
             target: aarch64-apple-darwin
+            os_name: darwin
           - platform: macos-x86_64
             os: macos-13
             target: x86_64-apple-darwin
+            os_name: darwin
           - platform: linux-x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            os_name: linux
           - platform: windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            os_name: windows
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.platform }})
@@ -97,7 +101,9 @@ jobs:
           mix local.rebar --force
           mix deps.get --only prod
           mix assets.deploy
-          mix release desktop --overwrite --path rel/desktop/src-tauri/release
+          mix release desktop --overwrite --path rel/desktop/src-tauri/rel-${{ matrix.os_name }}
+          # Some NIFs ship read-only .so files; ensure writable for Tauri resource copy
+          find rel/desktop/src-tauri/rel-${{ matrix.os_name }} -type f ! -perm -u+w -exec chmod u+w {} +
 
       - name: Build OTP release (Windows)
         if: runner.os == 'Windows'
@@ -109,45 +115,19 @@ jobs:
           mix local.rebar --force
           mix deps.get --only prod
           mix assets.deploy
-          mix release desktop --overwrite --path rel/desktop/src-tauri/release
+          mix release desktop --overwrite --path rel/desktop/src-tauri/rel-${{ matrix.os_name }}
 
       # --- Prepare Tauri frontend dist ---
       - name: Create Tauri frontend dist
         run: mkdir -p rel/desktop/src-tauri/dist && cp rel/desktop/src-tauri/dist_splash.html rel/desktop/src-tauri/dist/index.html
 
-      # --- Build Tauri ---
+      # --- Build Tauri with OTP release bundled as resource ---
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
 
       - name: Build Tauri app
         working-directory: rel/desktop/src-tauri
-        run: cargo tauri build --target ${{ matrix.target }}
-
-      # --- Inject OTP release into bundle ---
-      - name: Inject OTP release into macOS bundle
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          APP_DIR=$(find rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos -name '*.app' -type d | head -1)
-          if [ -n "$APP_DIR" ]; then
-            cp -a rel/desktop/src-tauri/release "$APP_DIR/Contents/Resources/release"
-          fi
-
-      - name: Inject OTP release into Linux bundle
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          APPDIR=$(find rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/appimage -name '*.AppDir' -type d 2>/dev/null | head -1)
-          if [ -n "$APPDIR" ]; then
-            cp -a rel/desktop/src-tauri/release "$APPDIR/usr/bin/release"
-          fi
-
-      - name: Inject OTP release into Windows bundle
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $msiDir = "rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/msi"
-          if (Test-Path $msiDir) {
-            Copy-Item -Recurse -Force "rel/desktop/src-tauri/release" "$msiDir/release"
-          }
+        run: cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}}}'
 
       # --- Upload artifacts ---
       - name: Upload Windows artifacts

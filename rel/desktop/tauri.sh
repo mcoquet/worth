@@ -6,23 +6,32 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TAURI_DIR="$SCRIPT_DIR/src-tauri"
 RELEASE_NAME="desktop"
 
+# Detect OS for platform-specific release directory
+case "$(uname -s)" in
+  Linux*)  OS_NAME="linux" ;;
+  Darwin*) OS_NAME="darwin" ;;
+  MINGW*|MSYS*|CYGWIN*) OS_NAME="windows" ;;
+  *) echo "Unsupported OS"; exit 1 ;;
+esac
+
+RELEASE_DIR="$TAURI_DIR/rel-${OS_NAME}"
+
 mix_release() {
-    echo "==> Building OTP release..."
+    echo "==> Building OTP release (${OS_NAME})..."
     cd "$PROJECT_DIR"
 
     MIX_ENV=prod mix deps.get --only prod
     MIX_ENV=prod mix assets.deploy
     MIX_ENV=prod mix release "$RELEASE_NAME" --overwrite \
-        --path "$TAURI_DIR/release"
+        --path "$RELEASE_DIR"
 
-    echo "==> OTP release built at $TAURI_DIR/release"
+    # Ensure all files are writable (some NIFs ship read-only .so files)
+    find "$RELEASE_DIR" -type f ! -perm -u+w -exec chmod u+w {} +
+
+    echo "==> OTP release built at $RELEASE_DIR"
 }
 
 tauri_build() {
-    echo "==> Preparing OTP release for bundling..."
-    mkdir -p "$TAURI_DIR/src-tauri/rel"
-    cp -a "$TAURI_DIR/release/"* "$TAURI_DIR/rel/"
-
     echo "==> Building Tauri application..."
     cd "$TAURI_DIR"
 
@@ -31,8 +40,14 @@ tauri_build() {
         exit 1
     fi
 
-    cargo tauri build
+    # Prepare splash screen dist
+    mkdir -p dist
+    cp dist_splash.html dist/index.html
+
+    # Pass resources dynamically so tauri.conf.json stays clean
+    cargo tauri build --config "{\"bundle\":{\"resources\":{\"rel-${OS_NAME}\":\"rel\"}}}"
     echo "==> Tauri build complete"
+    echo "Artifacts at: $TAURI_DIR/target/release/bundle/"
 }
 
 dev() {

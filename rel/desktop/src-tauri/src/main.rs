@@ -10,12 +10,16 @@ use tauri::{Manager, RunEvent, WindowEvent};
 
 struct OtpProcess(Mutex<Option<Child>>);
 
-/// Resolve the OTP release directory bundled alongside the Tauri binary.
-fn release_dir() -> PathBuf {
-    let exe = std::env::current_exe().expect("cannot locate own executable");
-    let base = exe.parent().expect("executable has no parent dir");
-
-    // Check WORTH_RELEASE_DIR env var first (allows override)
+/// Resolve the OTP release directory.
+///
+/// In release builds, Tauri's `resource_dir()` points to where `bundle.resources`
+/// placed files (passed dynamically via `--config`). The release lives at `rel/`
+/// inside the resource directory — matching Livebook's convention.
+///
+/// In dev builds (`cargo build --release` without Tauri bundling), we fall back
+/// to a manual search relative to the executable.
+fn release_dir(app: &tauri::App) -> PathBuf {
+    // 1. Environment override (always wins)
     if let Ok(dir) = std::env::var("WORTH_RELEASE_DIR") {
         let p = PathBuf::from(dir);
         if p.join("bin").exists() {
@@ -23,23 +27,27 @@ fn release_dir() -> PathBuf {
         }
     }
 
-    // Bundled app locations:
-    // - macOS: ../Resources/release (inside .app bundle)
-    // - Linux AppImage / installed: ../share/release or ../release
-    // - Dev build: ../../release (exe is at target/release/worth-desktop,
-    //   release is at src-tauri/release)
-    for candidate in &[
-        base.join("../Resources/release"),
-        base.join("../share/release"),
-        base.join("../release"),
-        base.join("../../release"),
-    ] {
+    // 2. Tauri resource directory (release builds — AppImage, DMG, MSI, deb)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let candidate = resource_dir.join("rel");
         if candidate.join("bin").exists() {
-            return candidate.canonicalize().unwrap_or_else(|_| candidate.to_path_buf());
+            return candidate;
         }
     }
 
-    panic!("Could not locate OTP release. Looked relative to {:?}", base);
+    // 3. Dev build fallback: exe is at target/release/worth-desktop,
+    //    release is at src-tauri/release
+    let exe = std::env::current_exe().expect("cannot locate own executable");
+    let base = exe.parent().expect("executable has no parent dir");
+    let candidate = base.join("../../release");
+    if candidate.join("bin").exists() {
+        return candidate.canonicalize().unwrap_or_else(|_| candidate.to_path_buf());
+    }
+
+    panic!(
+        "Could not locate OTP release. Checked resource_dir/rel and dev paths relative to {:?}",
+        base
+    );
 }
 
 fn start_otp(release: &PathBuf) -> Child {
@@ -75,11 +83,10 @@ fn stop_otp_state(app: &tauri::AppHandle) {
 }
 
 fn main() {
-    let release = release_dir();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .setup(move |app| {
+        .setup(|app| {
+            let release = release_dir(app);
             let child = start_otp(&release);
             app.manage(OtpProcess(Mutex::new(Some(child))));
 
@@ -136,8 +143,6 @@ fn main() {
                 event: WindowEvent::CloseRequested { .. },
                 ..
             } if label == "main" => {
-                // Hide the window immediately so the user doesn't see a blank screen
-                // while OTP shuts down.
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
