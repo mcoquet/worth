@@ -8,11 +8,13 @@ defmodule Worth.Skill.Paths do
   `<workspace>/.worth/skills/` and `<workspace>/.worth/skills/learned/`.
   """
 
+  alias Worth.Workspace.Service
+
   def core_dir, do: Path.join(:code.priv_dir(:worth), "core_skills")
 
   @doc "User-installed skills directory for a workspace."
   def user_dir(workspace) do
-    Path.join(Worth.Workspace.Service.resolve_path(workspace), ".worth/skills")
+    Path.join(Service.resolve_path(workspace), ".worth/skills")
   end
 
   @doc "Agent-learned skills directory for a workspace."
@@ -32,7 +34,7 @@ defmodule Worth.Skill.Paths do
     if File.dir?(core_path) do
       core_path
     else
-      workspaces = if workspace, do: [workspace], else: Worth.Workspace.Service.list()
+      workspaces = if workspace, do: [workspace], else: Service.list()
 
       Enum.find_value(workspaces, fn ws ->
         candidates = [

@@ -1,4 +1,5 @@
 defmodule Worth.Skill.Trust do
+  @moduledoc false
   @trust_levels [:core, :installed, :learned, :unverified]
 
   @tool_access %{

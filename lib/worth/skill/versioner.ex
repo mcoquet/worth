@@ -1,10 +1,13 @@
 defmodule Worth.Skill.Versioner do
+  @moduledoc false
+  alias Worth.Skill.Parser
   alias Worth.Skill.Paths
+  alias Worth.Skill.Service
 
   @history_dir ".worth/history"
 
   def save_version(skill_name) do
-    with {:ok, skill} <- Worth.Skill.Service.read(skill_name),
+    with {:ok, skill} <- Service.read(skill_name),
          dir when is_binary(dir) <- history_dir(skill_name) do
       version = skill.evolution[:version] || 1
       File.mkdir_p!(dir)
@@ -12,12 +15,12 @@ defmodule Worth.Skill.Versioner do
       filename = "v#{version}.md"
       path = Path.join(dir, filename)
 
-      if not File.exists?(path) do
-        content = Worth.Skill.Parser.to_frontmatter_string(skill)
+      if File.exists?(path) do
+        {:ok, :already_saved}
+      else
+        content = Parser.to_frontmatter_string(skill)
         File.write!(path, content)
         {:ok, path}
-      else
-        {:ok, :already_saved}
       end
     else
       {:error, _} = error -> error
@@ -55,9 +58,9 @@ defmodule Worth.Skill.Versioner do
   def rollback(skill_name, target_version) do
     with dir when is_binary(dir) <- history_dir(skill_name),
          path = Path.join(dir, "v#{target_version}.md"),
-         {:ok, _} <- Worth.Skill.Service.read(skill_name),
+         {:ok, _} <- Service.read(skill_name),
          true <- File.exists?(path),
-         {:ok, _} <- Worth.Skill.Parser.parse_file(path) do
+         {:ok, _} <- Parser.parse_file(path) do
       save_version(skill_name)
 
       case File.read(path) do

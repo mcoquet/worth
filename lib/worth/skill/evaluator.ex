@@ -1,19 +1,24 @@
 defmodule Worth.Skill.Evaluator do
+  @moduledoc false
+  alias Worth.Skill.Service
+  alias Worth.Skill.Trust
+
   def record_success(skill_name) do
-    Worth.Skill.Service.record_usage(skill_name, true)
+    Service.record_usage(skill_name, true)
   end
 
   def record_failure(skill_name) do
-    Worth.Skill.Service.record_usage(skill_name, false)
+    Service.record_usage(skill_name, false)
   end
 
   def should_promote?(skill_name) do
-    case Worth.Skill.Service.read(skill_name) do
+    case Service.read(skill_name) do
       {:ok, skill} when skill.trust_level in [:learned, :unverified] ->
-        next_levels = Worth.Skill.Trust.promotion_path(skill.trust_level)
+        next_levels = Trust.promotion_path(skill.trust_level)
 
-        Enum.find(next_levels, fn target ->
-          Worth.Skill.Trust.meets_promotion_criteria?(skill, target)
+        next_levels
+        |> Enum.find(fn target ->
+          Trust.meets_promotion_criteria?(skill, target)
         end)
         |> case do
           nil -> false
@@ -29,7 +34,7 @@ defmodule Worth.Skill.Evaluator do
   @refinement_threshold 0.6
 
   def should_refine?(skill_name) do
-    case Worth.Skill.Service.read(skill_name) do
+    case Service.read(skill_name) do
       {:ok, skill} ->
         evolution = skill.evolution
         usage = evolution[:usage_count] || 0
@@ -42,7 +47,7 @@ defmodule Worth.Skill.Evaluator do
   end
 
   def performance_summary(skill_name) do
-    case Worth.Skill.Service.read(skill_name) do
+    case Service.read(skill_name) do
       {:ok, skill} ->
         evo = skill.evolution
 
@@ -53,7 +58,7 @@ defmodule Worth.Skill.Evaluator do
           success_rate: evo[:success_rate] || 0.0,
           version: evo[:version] || 1,
           last_used: evo[:last_used],
-          can_promote: Worth.Skill.Trust.meets_promotion_criteria?(skill, :installed),
+          can_promote: Trust.meets_promotion_criteria?(skill, :installed),
           needs_refinement: should_refine?(skill_name)
         }
 

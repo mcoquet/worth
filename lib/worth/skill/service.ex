@@ -1,5 +1,8 @@
 defmodule Worth.Skill.Service do
+  @moduledoc false
+  alias Worth.Skill.Parser
   alias Worth.Skill.Paths
+  alias Worth.Workspace.Service
 
   def list(opts \\ []) do
     core = list_core_skills()
@@ -10,7 +13,7 @@ defmodule Worth.Skill.Service do
         list_workspace_skills(workspace)
       else
         # List skills from all workspaces
-        Worth.Workspace.Service.list()
+        Service.list()
         |> Enum.flat_map(&list_workspace_skills/1)
         |> Enum.uniq_by(& &1.name)
       end
@@ -29,7 +32,7 @@ defmodule Worth.Skill.Service do
 
     case Paths.resolve(name, workspace) do
       nil -> {:error, "Skill '#{name}' not found"}
-      dir -> Worth.Skill.Parser.parse_file(Path.join(dir, "SKILL.md"))
+      dir -> Parser.parse_file(Path.join(dir, "SKILL.md"))
     end
   end
 
@@ -80,7 +83,7 @@ defmodule Worth.Skill.Service do
       allowed_tools: nil,
       metadata: %{},
       evolution: %{
-        created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        created_at: DateTime.to_iso8601(DateTime.utc_now()),
         created_by: Atom.to_string(provenance),
         version: 1,
         refinement_count: 0,
@@ -99,7 +102,7 @@ defmodule Worth.Skill.Service do
       {:ok, _} ->
         dest = Path.join(Paths.user_dir(workspace), name)
         File.mkdir_p!(dest)
-        skill_md = Worth.Skill.Parser.to_frontmatter_string(skill)
+        skill_md = Parser.to_frontmatter_string(skill)
         File.write!(Path.join(dest, "SKILL.md"), skill_md)
         Worth.Skill.Registry.refresh()
         {:ok, name}
@@ -142,7 +145,7 @@ defmodule Worth.Skill.Service do
       {:ok, skill} ->
         workspace = opts[:workspace] || current_workspace()
         evolution = skill.evolution
-        now = DateTime.utc_now() |> DateTime.to_iso8601()
+        now = DateTime.to_iso8601(DateTime.utc_now())
 
         usage_count = (evolution[:usage_count] || 0) + 1
         success_count = (evolution[:success_count] || 0) + if(success?, do: 1, else: 0)
@@ -164,7 +167,7 @@ defmodule Worth.Skill.Service do
             {:error, "Skill '#{name}' not found"}
 
           path ->
-            File.write!(Path.join(path, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(updated))
+            File.write!(Path.join(path, "SKILL.md"), Parser.to_frontmatter_string(updated))
             Worth.Skill.Registry.refresh()
             {:ok, updated}
         end
@@ -226,7 +229,7 @@ defmodule Worth.Skill.Service do
     skill_md = Path.join(dir, "SKILL.md")
 
     if File.exists?(skill_md) do
-      case Worth.Skill.Parser.parse_file(skill_md) do
+      case Parser.parse_file(skill_md) do
         {:ok, skill} ->
           %{
             name: skill.name || name,
@@ -249,13 +252,11 @@ defmodule Worth.Skill.Service do
             body_length: 0
           }
       end
-    else
-      nil
     end
   end
 
   defp filter_for_workspace(skills, workspace) do
-    ws_path = Worth.Workspace.Service.resolve_path(workspace)
+    ws_path = Service.resolve_path(workspace)
     manifest_path = Path.join(ws_path, ".worth/skills.json")
 
     active =
@@ -270,8 +271,6 @@ defmodule Worth.Skill.Service do
           _ ->
             nil
         end
-      else
-        nil
       end
 
     case active do
@@ -286,6 +285,6 @@ defmodule Worth.Skill.Service do
   end
 
   defp current_workspace do
-    Application.get_env(:worth, :current_workspace, "personal")
+    Worth.Config.get(:current_workspace, "personal")
   end
 end

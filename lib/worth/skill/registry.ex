@@ -1,4 +1,5 @@
 defmodule Worth.Skill.Registry do
+  @moduledoc false
   @registry_key :worth_skill_metadata
 
   def init do
@@ -9,32 +10,30 @@ defmodule Worth.Skill.Registry do
     skills = Worth.Skill.Service.list()
 
     index =
-      skills
-      |> Enum.map(fn s -> {s.name, s} end)
-      |> Enum.into(%{})
+      Map.new(skills, fn s -> {s.name, s} end)
 
     :persistent_term.put(@registry_key, index)
     {:ok, length(skills)}
   end
 
   def all do
-    :persistent_term.get(@registry_key, %{})
+    @registry_key
+    |> :persistent_term.get(%{})
     |> Map.values()
   end
 
   def get(name) do
-    :persistent_term.get(@registry_key, %{})
+    @registry_key
+    |> :persistent_term.get(%{})
     |> Map.get(name)
   end
 
   def always_loaded do
-    all()
-    |> Enum.filter(&(&1.loading == :always))
+    Enum.filter(all(), &(&1.loading == :always))
   end
 
   def on_demand do
-    all()
-    |> Enum.filter(&(&1.loading == :on_demand))
+    Enum.filter(all(), &(&1.loading == :on_demand))
   end
 
   def metadata_for_prompt do
@@ -44,29 +43,25 @@ defmodule Worth.Skill.Registry do
     parts = []
 
     parts =
-      if always != [] do
+      if always == [] do
+        parts
+      else
         skills_text =
-          always
-          |> Enum.map(fn s -> "- #{s.name}: #{s.description}" end)
-          |> Enum.join("\n")
+          Enum.map_join(always, "\n", fn s -> "- #{s.name}: #{s.description}" end)
 
         ["## Active Skills\n\n#{skills_text}" | parts]
-      else
-        parts
       end
 
     parts =
-      if on_demand_skills != [] do
+      if on_demand_skills == [] do
+        parts
+      else
         available_text =
-          on_demand_skills
-          |> Enum.map(fn s -> "- #{s.name}: #{s.description} (use skill_read to load)" end)
-          |> Enum.join("\n")
+          Enum.map_join(on_demand_skills, "\n", fn s -> "- #{s.name}: #{s.description} (use skill_read to load)" end)
 
         ["## Available Skills (On Demand)\n\n#{available_text}" | parts]
-      else
-        parts
       end
 
-    if parts != [], do: Enum.join(parts, "\n\n"), else: nil
+    if parts == [], do: nil, else: Enum.join(parts, "\n\n")
   end
 end

@@ -1,4 +1,5 @@
 defmodule Worth.Skill.Parser do
+  @moduledoc false
   @frontmatter_delimiter ~r/^-{3,}\s*$/
 
   def parse(skill_md_content) when is_binary(skill_md_content) do
@@ -50,23 +51,21 @@ defmodule Worth.Skill.Parser do
   end
 
   defp parse_frontmatter(frontmatter_str) do
-    try do
-      case YamlElixir.read_from_string(frontmatter_str) do
-        {:ok, map} when is_map(map) ->
-          {:ok, map}
+    case YamlElixir.read_from_string(frontmatter_str) do
+      {:ok, map} when is_map(map) ->
+        {:ok, map}
 
-        {:ok, other} ->
-          {:error, "Frontmatter must be a YAML map, got: #{inspect(other)}"}
+      {:ok, other} ->
+        {:error, "Frontmatter must be a YAML map, got: #{inspect(other)}"}
 
-        {:error, %YamlElixir.ParsingError{} = e} ->
-          {:error, "YAML parse error: #{Exception.message(e)}"}
+      {:error, %YamlElixir.ParsingError{} = e} ->
+        {:error, "YAML parse error: #{Exception.message(e)}"}
 
-        {:error, reason} ->
-          {:error, "YAML parse error: #{inspect(reason)}"}
-      end
-    rescue
-      e -> {:error, "YAML parse error: #{Exception.message(e)}"}
+      {:error, reason} ->
+        {:error, "YAML parse error: #{inspect(reason)}"}
     end
+  rescue
+    e -> {:error, "YAML parse error: #{Exception.message(e)}"}
   end
 
   defp build_skill(frontmatter, body) do
@@ -158,8 +157,7 @@ defmodule Worth.Skill.Parser do
       "  feedback_summary: #{evo[:feedback_summary] || "null"}"
     ]
 
-    (lines ++ evo_lines ++ ["---", "", skill.body])
-    |> Enum.join("\n")
+    Enum.join(lines ++ evo_lines ++ ["---", "", skill.body], "\n")
   end
 
   defp yaml_string(nil), do: "null"

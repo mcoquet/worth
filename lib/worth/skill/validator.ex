@@ -1,4 +1,5 @@
 defmodule Worth.Skill.Validator do
+  @moduledoc false
   @valid_name_regex ~r/^[a-z0-9][a-z0-9-]{0,63}$/
   @max_name_length 64
   @max_description_length 1024
