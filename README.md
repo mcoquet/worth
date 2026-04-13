@@ -1,91 +1,139 @@
-# Worth
+<p align="center">
+  <!-- TODO: Add a screenshot or banner of the Worth desktop app here -->
+  <!-- <img src="path/to/screenshot.png" width="720" alt="Worth Desktop App"> -->
+  <br/>
+  <img src="priv/static/images/logo.svg" width="200" alt="Worth Logo">
+</p>
 
-An AI assistant built on Elixir/BEAM with a Phoenix LiveView web interface. Worth provides a modular, embeddable agent system with persistent memory, self-learning skills, and MCP integration.
+<h1 align="center">Worth</h1>
 
-[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
-[![Elixir](https://img.shields.io/badge/Elixir-1.19+-grey.svg)](https://elixir-lang.org)
-[![BEAM](https://img.shields.io/badge/BEAM-OTP-26+-grey.svg)](https://www.erlang.org)
+<p align="center">
+  A powerful personal AI agent &amp; a research petri dish for memory systems and agent loop design.
+  <br/>
+  Built on Elixir/BEAM. Runs as a native desktop app on macOS, Windows, and Linux.
+</p>
 
-## Why Elixir/BEAM?
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg" alt="License"></a>
+  <a href="https://elixir-lang.org"><img src="https://img.shields.io/badge/Elixir-1.19+-purple.svg" alt="Elixir"></a>
+  <a href="https://www.erlang.org"><img src="https://img.shields.io/badge/BEAM-OTP%2026+-red.svg" alt="BEAM"></a>
+</p>
 
-Worth runs on the BEAM virtual machine—the same platform powering WhatsApp, Discord, and Heroku. BEAM provides:
+---
 
-- **Process isolation** — Each MCP server, tool execution, and agent turn runs in its own lightweight process. Failures are contained.
-- **Supervision trees** — Built-in fault tolerance. A crashed MCP connection restarts without killing the agent.
-- **Hot code upgrades** — Reload modules without restarting. Worth can evolve while running.
-- **Real-time concurrency** — Streaming LLM responses, tool execution, and UI updates happen concurrently without callback hell.
+## What is Worth?
+
+Worth is two things in one.
+
+**A powerful AI agent for everyone.** Write code, research topics, manage git repos, browse the web, and connect to external services — all from a single desktop application. Worth gives you a persistent AI assistant with a global memory that learns your preferences across everything you do.
+
+**A research petri dish for agent enthusiasts.** Worth is built on [AgentEx](https://github.com/kittyfromouterspace/agent_ex) (the agent loop engine) and [Mneme](https://github.com/kittyfromouterspace/mneme) (the memory engine) — two standalone libraries you can study, modify, and experiment with. Worth is the living organism that shows what these building blocks can do when composed together.
+
+### Understanding Agents Through Worth
+
+If you want to understand how AI agents actually work — not just use them — Worth is the project for you. Every subsystem is a small, readable Elixir module:
+
+- **Agent loop** — See how an LLM turns into an autonomous agent via `AgentEx.run/1`. The loop iterates LLM calls and tool executions until the task is complete. You can inspect the stages, modify tool permissions, and switch autonomy modes.
+- **Memory** — Explore how persistent memory works through Mneme's three-tier system: working memory (per-session), knowledge graph (facts and relationships), and vector search (semantic retrieval). Watch how memories decay, how facts are extracted, and how the agent uses context from past conversations.
+- **Skills** — See how agents can learn and self-improve. Skills follow the [agentskills.io](https://agentskills.io/) standard and go through a lifecycle: create, test, refine, promote. The system tracks success rates and auto-refines underperforming skills.
+- **MCP integration** — Understand the Model Context Protocol by connecting Worth to external services (GitHub, databases, Slack) and watching how tool discovery and execution works in practice.
+
+## Desktop App
+
+Worth ships as a native desktop application built with [Tauri](https://tauri.app/), wrapping the Phoenix LiveView web UI in a lightweight native shell. It runs on all major platforms:
+
+| Platform | Format |
+|----------|--------|
+| **macOS** | `.dmg` (10.15+) |
+| **Windows** | `.exe` installer (NSIS, per-user) |
+| **Linux** | `.deb` / `.AppImage` |
+
+The app opens a 1200x800 window with the full Worth UI — chat, sidebar, workspace management, and slash commands. Everything runs locally on your machine. No cloud, no containers.
+
+## Workspaces
+
+Worth uses workspaces to separate projects and give the agent project-specific context.
+
+A workspace is a named environment that provides:
+
+- **Identity** — `IDENTITY.md` tells the agent what the project is about (read every turn)
+- **Agent instructions** — `AGENTS.md` contains project-specific coding conventions and preferences
+- **Local skills** — `.worth/skills.json` activates skills for this workspace
+- **MCP overrides** — `.worth/mcp.json` connects project-specific external services
+
+```
+~/.worth/workspaces/
+└── my-project/
+    ├── IDENTITY.md          # What is this project?
+    ├── AGENTS.md            # How should the agent behave here?
+    └── .worth/
+        ├── skills.json      # Active skills
+        └── mcp.json         # MCP server config
+```
+
+Memory is **global** — not per-workspace. A pattern learned in one workspace (e.g., "user prefers conventional commits") is available everywhere. Workspaces are lenses, not silos.
+
+Switch between workspaces with `/workspace switch <name>` in the chat, or launch directly into one:
+
+```bash
+worth --workspace my-project
+```
 
 ## Quick Start
 
-### As a Standalone Application
+### Desktop App
+
+Download the latest release for your platform from the [releases page](../../releases), install, and launch. The app will guide you through initial setup on first run.
+
+### From Source
 
 ```bash
-# Clone and setup (uses libSQL by default - no PostgreSQL needed!)
 git clone https://github.com/kittyfromouterspace/worth.git
 cd worth
+
+# Worth requires two sibling libraries
+git clone https://github.com/kittyfromouterspace/agent_ex.git ../agent_ex
+git clone https://github.com/kittyfromouterspace/mneme.git ../mneme
+
 mix deps.get
-mix ecto.create    # Creates ~/.worth/worth.db automatically
-mix ecto.migrate   # Runs migrations
-
-# Configure API keys
+mix setup                  # deps + database + assets
 export ANTHROPIC_API_KEY="sk-ant-..."
-
-# Start the web UI
-mix phx.server
+mix worth                  # launches the web UI (opens browser)
 ```
 
-Open http://localhost:4000 in your browser.
-
-Or use the CLI launcher (auto-opens browser):
+Open http://localhost:4000 in your browser, or build the desktop app:
 
 ```bash
-# Start with default settings (libSQL backend)
-mix worth
-
-# Start with specific workspace and mode
-mix worth --workspace my-project --mode research
-
-# Use PostgreSQL instead (if needed)
-WORTH_DATABASE_BACKEND=postgres mix worth
-```
-
-### As a Library
-
-Add Worth to your `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:worth, "~> 0.1.0"},
-    {:agent_ex, path: "../agent_ex"},
-    {:mneme, path: "../mneme"}
-  ]
-end
+# Build the Tauri desktop app
+cd rel/desktop/src-tauri && cargo tauri build
 ```
 
 ## Core Concepts
 
 ### The Brain
 
-`Worth.Brain` is a GenServer that orchestrates the agent loop. It owns the session state and delegates to specialized subsystems:
+`Worth.Brain` is a GenServer that orchestrates the agent loop. It holds the session state and delegates to specialized subsystems:
 
 ```elixir
-# Send a message
 {:ok, response} = Worth.Brain.send_message("Write a test for auth.ex")
 ```
 
 The brain exposes these integration points:
-- `send_message/1` — Send user input, get agent response
-- `approve_tool/1` — Approve a pending tool call
-- `switch_workspace/1` — Change context
-- `switch_mode/1` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
+- `send_message/2` — Send user input, get agent response
+- `approve_tool/2` — Approve a pending tool call
+- `switch_workspace/2` — Change context
+- `switch_mode/2` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
 
-### Memory System
+### Memory System (Mneme)
 
-Worth uses [Mneme](https://github.com/kittyfromouterspace/mneme) for vector search + knowledge graph:
+Worth uses [Mneme](https://github.com/kittyfromouterspace/mneme) for persistent memory — a three-tier system:
+
+1. **Working memory** — Per-session context, flushed to global memory on workspace switch
+2. **Knowledge graph** — Structured facts extracted from conversations (entities, relationships)
+3. **Vector search** — Semantic retrieval over past knowledge using embeddings
 
 ```elixir
-# Store a fact (global, not per-workspace)
+# Store a fact (global, shared across all workspaces)
 Worth.Memory.Manager.write(%{
   content: "User prefers conventional commits",
   entry_type: "preference",
@@ -96,27 +144,22 @@ Worth.Memory.Manager.write(%{
 {:ok, results} = Worth.Memory.Manager.search("commit conventions")
 ```
 
-Memory is **global** by design. All workspaces share one knowledge store. Workspaces provide context overlays (project identity, local skills), not memory silos.
+Memory decays over time — older facts fade unless reinforced. This keeps the knowledge base relevant and prevents stale information from polluting context.
 
 ### Skills System
 
-Skills follow the [agentskills.io](https://agentskills.io/) standard and teach the agent *how* to use tools:
+Skills teach the agent *how* to use tools effectively. They follow the [agentskills.io](https://agentskills.io/) standard and go through a lifecycle:
 
-```elixir
-# List available skills
-skills = Worth.Skill.Service.list()
+- **Create** — Agent or user writes a skill as a `SKILL.md` file
+- **Test** — Skill is used in real tasks; success rate is tracked
+- **Refine** — Underperforming skills are automatically refined by the LLM
+- **Promote** — Proven skills graduate to higher trust levels
 
-# Read skill content
-{:ok, skill} = Worth.Skill.Service.read("git-workflow")
-```
-
-Skills have trust levels: `core` (shipped), `installed` (user-added), `learned` (agent-created). The system tracks success rates and auto-refines underperforming skills.
+Trust levels: `core` (shipped with Worth), `installed` (user-added), `learned` (agent-created).
 
 ### MCP Integration
 
-Worth can connect to external MCP servers and expose its own capabilities as an MCP server.
-
-**As an MCP Client:**
+Worth connects to external services via the [Model Context Protocol](https://modelcontextprotocol.org/). Tools are namespaced as `server:tool_name` to avoid collisions.
 
 ```elixir
 # Configure in ~/.worth/config.exs
@@ -135,13 +178,7 @@ Worth can connect to external MCP servers and expose its own capabilities as an 
 }
 ```
 
-**As an MCP Server:**
-
-```bash
-mix worth serve
-```
-
-Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_workspace_status`
+Worth can also expose itself as an MCP server (`worth serve`), letting other agents query its memory, skills, and workspace status.
 
 ## Architecture
 
@@ -150,33 +187,59 @@ Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_wo
 │                    Worth (BEAM Node)                      │
 │                                                          │
 │  ┌──────────────┐    ┌──────────────┐                   │
-│  │  Phoenix     │    │  Brain       │                   │
-│  │  LiveView    │◄──►│  (GenServer) │                   │
+│  │  Tauri Shell │    │  Brain       │                   │
+│  │  + LiveView  │◄──►│  (GenServer) │                   │
 │  │              │    │              │                    │
-│  │  - Chat UI   │    │  - AgentEx   │                   │
-│  │  - Sidebar   │    │  - Mneme     │                   │
-│  │  - Commands  │    │  - Skills    │                   │
-│  └──────────────┘    │  - MCP       │                   │
-│                      └──────┬───────┘                   │
-│                             │                           │
-│                      ┌──────▼───────┐                   │
-│                      │  AgentEx     │                   │
-│                      │  Loop Engine │                   │
-│                      └──────┬───────┘                   │
-│                             │                           │
-│        ┌─────────────┬──────┼──────┬─────────────┐     │
-│        │             │      │      │             │     │
+│  │  - Chat UI   │    │  - AgentEx   │                    │
+│  │  - Sidebar   │    │    .run/1    │                    │
+│  │  - Commands  │    │  - Mneme     │                    │
+│  └──────────────┘    │  - Skills    │                    │
+│                      │  - MCP       │                    │
+│                      └──────┬───────┘                    │
+│                             │                            │
+│                      ┌──────▼───────┐                    │
+│                      │  AgentEx     │                    │
+│                      │  Loop Engine │                    │
+│                      │              │                    │
+│                      │  Stages:     │                    │
+│                      │  ContextGuard│                    │
+│                      │  LLMCall     │                    │
+│                      │  ToolExecutor│                    │
+│                      │  CommitGate  │                    │
+│                      └──────┬───────┘                    │
+│                             │                            │
+│        ┌─────────────┬──────┼──────┬─────────────┐      │
+│        │             │      │      │             │      │
 │ ┌──────▼──┐  ┌──────▼──┐  ┌──▼──┐  ┌──────▼──┐  ┌─▼───┐│
 │ │ Mneme   │  │ File    │  │Tool │  │ Skills  │  │ MCP ││
 │ │ Memory  │  │ Tools   │  │Index│  │ System  │  │Srvrs││
 │ └──────┬──┘  └─────────┘  └─────┘  └─────────┘  └─────┘│
 │        │                                               │
 │ ┌──────▼──┐                                            │
-│ │PostgreSQL│                                           │
-│ │+ pgvector│                                           │
+│ │Database │                                            │
+│ │(libSQL/ │                                            │
+│ │ pg)     │                                            │
 │ └─────────┘                                            │
 └──────────────────────────────────────────────────────────┘
 ```
+
+### Supervision Tree
+
+```
+Worth.Application
+├── Worth.Repo (Ecto + libSQL/PostgreSQL)
+├── Worth.Config (Agent)
+├── Phoenix.PubSub + Worth.Registry
+├── Worth.TaskSupervisor
+├── Worth.Telemetry
+├── Worth.Mcp.Broker (DynamicSupervisor)
+├── Worth.Mcp.ConnectionMonitor
+├── Worth.Brain.Supervisor
+│   └── Worth.Brain (GenServer)
+└── WorthWeb.Endpoint (Bandit HTTP server → LiveView)
+```
+
+Every subsystem has its own supervisor. A crashed MCP connection restarts without killing the agent. A memory flush failure doesn't kill the brain. This is the BEAM's fault tolerance at work.
 
 ### Key Modules
 
@@ -184,114 +247,11 @@ Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_wo
 |--------|----------------|
 | `Worth.Brain` | Central GenServer, coordinates agent loop |
 | `WorthWeb.ChatLive` | Phoenix LiveView chat interface |
-| `Worth.Memory.Manager` | Global memory orchestration |
+| `Worth.Memory.Manager` | Global memory orchestration via Mneme |
 | `Worth.Skill.Service` | Skill CRUD, lifecycle management |
 | `Worth.Mcp.Broker` | DynamicSupervisor for MCP connections |
 | `Worth.Mcp.Gateway` | Lazy tool discovery and execution |
-| `Worth.Tools` | Builtin tool implementations |
-
-### Supervision Tree
-
-```
-Worth.Application
-├── Worth.Repo (Ecto + libSQL/SQLite or Postgres)
-├── Worth.Config (Agent)
-├── Worth.LogBuffer
-├── Phoenix.PubSub + Worth.Registry
-├── Worth.TaskSupervisor
-├── Worth.Telemetry + Worth.Metrics
-├── Worth.Agent.Tracker
-├── Worth.Mcp.Broker (DynamicSupervisor)
-├── Worth.Mcp.ConnectionMonitor
-├── Worth.Brain.Supervisor
-│   └── Worth.Brain (GenServer)
-├── WorthWeb.Telemetry
-└── WorthWeb.Endpoint (Phoenix)
-```
-
-**Note:** Worth now defaults to libSQL (SQLite with native vectors) instead of PostgreSQL. PostgreSQL remains supported for existing installations.
-
-## Prerequisites
-
-- **Elixir** 1.19+
-- **LLM API key** (Anthropic, OpenAI, or OpenRouter)
-- **Database** (choose one):
-  - **libSQL** (recommended) — Zero configuration, single file
-  - **PostgreSQL** 14+ with pgvector — For advanced/multi-user setups
-
-### Database Options
-
-#### Option A: libSQL (Recommended for Most Users)
-
-libSQL is a SQLite fork with native vector support. No server setup required—just a single file.
-
-```bash
-# No setup needed! Database is created automatically at ~/.worth/worth.db
-mix ecto.create
-mix ecto.migrate
-```
-
-**Benefits:**
-- ✨ Zero configuration
-- 📁 Single file database (easy backup)
-- 🚀 No PostgreSQL installation needed
-- 💾 Lower resource usage
-- 🔧 Cross-platform support
-
-#### Option B: PostgreSQL (For Existing Users or Multi-User Setups)
-
-```bash
-# Set PostgreSQL as your backend
-export WORTH_DATABASE_BACKEND=postgres
-
-# Create database
-mix ecto.create
-mix ecto.migrate
-```
-
-Or with Docker:
-
-```bash
-docker run -d \
-  --name worth-db \
-  -e POSTGRES_PASSWORD=worth \
-  -e POSTGRES_DB=worth \
-  -v pgdata:/var/lib/postgresql/data \
-  -p 5432:5432 \
-  pgvector/pgvector:pg16
-```
-
-**When to use PostgreSQL:**
-- Existing Worth installation with PostgreSQL
-- Multi-user server deployments
-- Need for advanced PostgreSQL features
-
-## Migrating from PostgreSQL to libSQL
-
-If you have an existing Worth installation using PostgreSQL and want to migrate to libSQL:
-
-```bash
-# Export your PostgreSQL data
-mix worth.export --output ~/worth_backup.jsonl
-
-# Configure libSQL (edit config or set env var)
-export WORTH_DATABASE_BACKEND=libsql
-
-# Create new libSQL database
-mix ecto.create
-mix ecto.migrate
-
-# Import your data
-mix worth.import --input ~/worth_backup.jsonl
-```
-
-Or use the automated migration task:
-
-```bash
-mix worth.migrate_to_libsql \
-  --pg-database worth_dev \
-  --libsql-db ~/.worth/worth.db
-```
+| `Worth.LLM.Router` | Multi-provider model routing |
 
 ## Configuration
 
@@ -313,58 +273,11 @@ Worth reads from `~/.worth/config.exs` (auto-created on first run):
       }
     }
   },
-  mcp: %{
-    servers: %{
-      filesystem: %{
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"],
-        autoconnect: true
-      }
-    }
-  }
+  theme: :standard
 }
 ```
 
-## Development
-
-```bash
-mix deps.get        # Install dependencies
-mix setup           # Full setup (deps + DB + assets)
-mix phx.server      # Start dev server with hot reload
-mix test            # Run tests
-mix credo           # Linting
-mix dialyzer        # Type checking
-```
-
-### Database Development
-
-```bash
-# Reset libSQL database (single file at ~/.worth/worth.db)
-rm ~/.worth/worth.db
-mix ecto.create
-mix ecto.migrate
-
-# Or with PostgreSQL
-export WORTH_DATABASE_BACKEND=postgres
-mix ecto.reset
-```
-
-### Running Tests
-
-```bash
-mix test                              # Full suite
-mix test test/worth/brain_test.exs    # Single file
-mix test test/worth/brain_test.exs:42 # Single test
-
-# Test with specific database backend
-WORTH_DATABASE_BACKEND=libsql mix test    # Default
-WORTH_DATABASE_BACKEND=postgres mix test  # PostgreSQL
-```
-
 ## Slash Commands
-
-These commands are available in the chat input:
 
 | Command | Description |
 |---------|-------------|
@@ -376,19 +289,44 @@ These commands are available in the chat input:
 | `/session resume <id>` | Resume a past session |
 | `/mcp list` | List connected MCP servers |
 | `/usage` | Show provider quota and session cost |
-| `/setup` | Show setup status |
 
-## Workspaces
+## Themes
 
-A workspace is a project directory with identity files:
+| Theme | Description |
+|-------|-------------|
+| `standard` | Catppuccin Mocha (default) — soft dark theme |
+| `cyberdeck` | Tactical HUD aesthetic — neon cyber command |
+| `fifth_element` | Industrial retro-futuristic — Moebius sci-fi |
 
+Set in `~/.worth/config.exs`:
+
+```elixir
+%{theme: :fifth_element}
 ```
-my-project/
-├── IDENTITY.md              # Project description (read each turn)
-├── AGENTS.md                # Agent-specific instructions
-└── .worth/
-    ├── skills.json          # Active skills for this workspace
-    └── mcp.json             # MCP server overrides
+
+## Why Elixir/BEAM?
+
+Worth runs on the BEAM virtual machine — the same platform powering WhatsApp, Discord, and Heroku.
+
+- **Process isolation** — Each MCP server, tool execution, and agent turn runs in its own lightweight process. Failures are contained.
+- **Supervision trees** — Built-in fault tolerance. A crashed connection restarts without killing the agent.
+- **Hot code upgrades** — Reload modules without restarting. Worth can evolve while running.
+- **Real-time concurrency** — Streaming LLM responses, tool execution, and UI updates happen concurrently.
+
+## Prerequisites
+
+- **Elixir** 1.19+ (for building from source)
+- **LLM API key** — Anthropic, OpenAI, or OpenRouter
+- **Rust** (for building the desktop app)
+
+## Development
+
+```bash
+mix deps.get        # Install dependencies
+mix setup           # Full setup (deps + DB + assets)
+mix test            # Run tests
+mix credo           # Linting
+mix dialyzer        # Type checking
 ```
 
 ## Documentation
@@ -397,7 +335,7 @@ Full design docs in `docs/`:
 
 | Document | Description |
 |----------|-------------|
-| [vision.md](docs/vision.md) | What worth is and why it exists |
+| [vision.md](docs/vision.md) | What Worth is and why it exists |
 | [architecture.md](docs/architecture.md) | System architecture and dependencies |
 | [brain.md](docs/brain.md) | Brain GenServer and callback system |
 | [memory.md](docs/memory.md) | Global memory: vector search + knowledge graph |
@@ -406,67 +344,18 @@ Full design docs in `docs/`:
 | [tools.md](docs/tools.md) | Available tools and extensions |
 | [theme-system.md](docs/theme-system.md) | Theme system and customization |
 
-## Themes
-
-Worth supports multiple visual themes to customize the UI appearance:
-
-| Theme | Description |
-|-------|-------------|
-| `standard` | Catppuccin Mocha (default) - soft dark theme |
-| `cyberdeck` | Tactical HUD aesthetic - neon cyber command |
-| `fifth_element` | Industrial retro-futuristic - Moebius sci-fi |
-
-### Configuring a Theme
-
-Set the theme in your `~/.worth/config.exs`:
-
-```elixir
-%{
-  theme: :fifth_element,
-  llm: %{...},
-  # ...
-}
-```
-
-Or via runtime config in `config/runtime.exs`:
-
-```elixir
-config :worth, theme: :cyberdeck
-```
-
-### Available Themes
-
-- **Standard** - The default Catppuccin Mocha theme with soft pastels
-- **Cyberdeck** - Inspired by Ops Center's tactical HUD with neon cyan/amber on void black
-- **Fifth Element** - Industrial retro-futuristic design with orange chassis, terminal green text, and CRT effects
-
-See [theme-system.md](docs/theme-system.md) for details on creating custom themes.
-
 ## Dependencies
-
-Worth depends on two local libraries that must exist as siblings:
-
-- **`../agent_ex`** — Agent loop engine with stages, profiles, and tool system
-- **`../mneme`** — Vector search + knowledge graph for memory
-
-Other key dependencies:
 
 | Library | Purpose |
 |---------|---------|
+| `agent_ex` (path) | Agent loop engine with stages, profiles, and tool system |
+| `mneme` (path) | Vector search + knowledge graph for memory |
 | `phoenix` + `phoenix_live_view` | Web UI framework |
 | `hermes_mcp` | MCP client/server (JSON-RPC 2.0) |
+| `bandit` | HTTP server for LiveView |
 | `ash` + `ash_postgres` | Domain modeling and persistence |
-| `phoenix_pubsub` | Event broadcasting |
 | `req` | HTTP client for LLM APIs |
-| `earmark` | Markdown rendering |
 
 ## License
 
 BSD-3-Clause. See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions welcome. Please ensure:
-- `mix credo` passes (linting)
-- `mix dialyzer` passes (types)
-- Tests pass (`mix test`)
