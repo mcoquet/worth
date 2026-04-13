@@ -2,7 +2,7 @@
   <!-- TODO: Add a screenshot or banner of the Worth desktop app here -->
   <!-- <img src="path/to/screenshot.png" width="720" alt="Worth Desktop App"> -->
   <br/>
-  <img src="priv/static/images/logo.svg" width="200" alt="Worth Logo">
+  <img src="rel/desktop/src-tauri/icons/128x128.png" width="128" alt="Worth Logo">
 </p>
 
 <h1 align="center">Worth</h1>
