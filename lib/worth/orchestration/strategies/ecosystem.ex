@@ -104,6 +104,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
     end
   end
 
+  @impl true
   def handle_result({:error, reason}, _opts, state) do
     case state.role do
       :builder ->
@@ -115,7 +116,6 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
     end
   end
 
-  @impl true
   def handle_event(_event, state), do: {:ok, state}
 
   @impl true
