@@ -42,7 +42,7 @@ defmodule Worth.Config.SetupTest do
     assert Setup.needs_setup?()
   end
 
-  test "default_embedding_model is local model" do
-    assert Setup.default_embedding_model() == "local/all-MiniLM-L6-v2"
+  test "default_embedding_model is openai/text-embedding-3-small" do
+    assert Setup.default_embedding_model() == "openai/text-embedding-3-small"
   end
 end

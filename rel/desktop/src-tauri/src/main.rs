@@ -8,8 +8,6 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, RunEvent, WindowEvent};
 
-mod metrics;
-
 struct OtpProcess(Mutex<Option<Child>>);
 
 /// Resolve the OTP release directory.
@@ -89,11 +87,6 @@ fn stop_otp_state(app: &tauri::AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(metrics::init_metrics())
-        .invoke_handler(tauri::generate_handler![
-            metrics::get_metrics,
-            metrics::clear_metrics
-        ])
         .setup(|app| {
             let release = release_dir(app);
             let child = start_otp(&release);

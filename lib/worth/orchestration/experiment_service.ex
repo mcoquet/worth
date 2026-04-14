@@ -88,8 +88,6 @@ defmodule Worth.Orchestration.ExperimentService do
     end)
   end
 
-  defp serialize_results(_), do: nil
-
   defp serialize_result({:ok, map}), do: Map.put(map, :status, "ok")
   defp serialize_result({:error, reason}), do: %{status: "error", reason: inspect(reason)}
 end

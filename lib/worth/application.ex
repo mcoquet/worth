@@ -7,6 +7,10 @@ defmodule Worth.Application do
 
   @impl true
   def start(_type, _args) do
+    if System.get_env("WORTH_DESKTOP") == "1" do
+      Worth.Boot.run_migrations_before_start!()
+    end
+
     children = [
       Worth.Repo,
       Worth.Config,
@@ -16,6 +20,7 @@ defmodule Worth.Application do
       {Registry, keys: :unique, name: Worth.Registry},
       {Task.Supervisor, name: Worth.TaskSupervisor},
       Worth.Metrics,
+      Worth.Metrics.Repo,
       Worth.Metrics.Writer,
       Worth.Agent.Tracker,
       Broker,
@@ -30,9 +35,7 @@ defmodule Worth.Application do
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
       {:ok, pid} ->
-        if System.get_env("WORTH_DESKTOP") == "1" do
-          Worth.Boot.run_migrations!()
-        end
+        AgentEx.Sandbox.Platform.log_status()
 
         _ = start_init_task(:skill_registry_init, &Worth.Skill.Registry.init/0)
         _ = start_init_task(:mcp_auto_connect, &Broker.connect_auto/0)

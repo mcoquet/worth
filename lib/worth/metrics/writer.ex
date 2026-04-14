@@ -9,12 +9,12 @@ defmodule Worth.Metrics.Writer do
 
   use GenServer
 
-  alias Worth.Metrics.Schema.SessionMetric
-  alias Worth.Metrics.Schema.TurnMetric
-  alias Worth.Metrics.Schema.ToolCallMetric
-  alias Worth.Repo
-
   import Ecto.Query
+
+  alias Worth.Metrics.Repo
+  alias Worth.Metrics.Schema.SessionMetric
+  alias Worth.Metrics.Schema.ToolCallMetric
+  alias Worth.Metrics.Schema.TurnMetric
 
   require Logger
 
@@ -105,51 +105,67 @@ defmodule Worth.Metrics.Writer do
 
   @doc false
   def handle_session_start(_event, _measurements, metadata, _config) do
-    GenServer.cast(__MODULE__, {:buffer,
-      {:session_start, metadata[:session_id], %{
-        strategy: metadata[:strategy] || "default",
-        mode: metadata[:mode] || "agentic",
-        started_at: DateTime.utc_now()
-      }}})
+    GenServer.cast(
+      __MODULE__,
+      {:buffer,
+       {:session_start, metadata[:session_id],
+        %{
+          strategy: to_string(metadata[:strategy] || "default"),
+          mode: to_string(metadata[:mode] || "agentic"),
+          started_at: DateTime.utc_now()
+        }}}
+    )
   end
 
   @doc false
   def handle_session_stop(_event, measurements, metadata, _config) do
-    GenServer.cast(__MODULE__, {:buffer,
-      {:session_stop, metadata[:session_id], %{
-        completed_at: DateTime.utc_now(),
-        status: "completed",
-        total_cost_usd: measurements[:cost] || 0,
-        total_tokens_in: measurements[:tokens_in] || 0,
-        total_tokens_out: measurements[:tokens_out] || 0,
-        total_turns: measurements[:steps] || 0,
-        duration: measurements[:duration]
-      }}})
+    GenServer.cast(
+      __MODULE__,
+      {:buffer,
+       {:session_stop, metadata[:session_id],
+        %{
+          completed_at: DateTime.utc_now(),
+          status: "completed",
+          total_cost_usd: measurements[:cost] || 0,
+          total_tokens_in: measurements[:tokens_in] || 0,
+          total_tokens_out: measurements[:tokens_out] || 0,
+          total_turns: measurements[:steps] || 0,
+          duration: measurements[:duration]
+        }}}
+    )
   end
 
   @doc false
   def handle_turn(_event, _measurements, metadata, _config) do
-    GenServer.cast(__MODULE__, {:buffer,
-      {:turn, metadata[:session_id], %{
-        turn_number: System.unique_integer([:positive]),
-        started_at: DateTime.utc_now(),
-        stop_reason: metadata[:stop_reason],
-        strategy: metadata[:strategy],
-        mode: metadata[:mode],
-        phase: metadata[:phase]
-      }}})
+    GenServer.cast(
+      __MODULE__,
+      {:buffer,
+       {:turn, metadata[:session_id],
+        %{
+          turn_number: System.unique_integer([:positive]),
+          started_at: DateTime.utc_now(),
+          stop_reason: to_string(metadata[:stop_reason] || ""),
+          strategy: to_string(metadata[:strategy] || "default"),
+          mode: to_string(metadata[:mode] || ""),
+          phase: to_string(metadata[:phase] || "")
+        }}}
+    )
   end
 
   @doc false
   def handle_tool_executed(_event, measurements, metadata, _config) do
-    GenServer.cast(__MODULE__, {:buffer,
-      {:tool_call, metadata[:session_id], %{
-        tool_name: metadata[:tool_name],
-        called_at: DateTime.utc_now(),
-        duration_ms: measurements[:duration],
-        success: metadata[:success] != false,
-        output_bytes: measurements[:output_bytes]
-      }}})
+    GenServer.cast(
+      __MODULE__,
+      {:buffer,
+       {:tool_call, metadata[:session_id],
+        %{
+          tool_name: metadata[:tool_name],
+          called_at: DateTime.utc_now(),
+          duration_ms: measurements[:duration],
+          success: metadata[:success] != false,
+          output_bytes: measurements[:output_bytes]
+        }}}
+    )
   end
 
   defp write_session_start({_type, session_id, data}) do
@@ -175,7 +191,9 @@ defmodule Worth.Metrics.Writer do
       )
 
     case Repo.one(query) do
-      nil -> :ok
+      nil ->
+        :ok
+
       session ->
         session
         |> Ecto.Changeset.change(%{

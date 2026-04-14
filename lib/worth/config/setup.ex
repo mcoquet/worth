@@ -12,7 +12,7 @@ defmodule Worth.Config.Setup do
   alias Worth.Config
 
   @openrouter_env "OPENROUTER_API_KEY"
-  @default_embedding_model "local/all-MiniLM-L6-v2"
+  @default_embedding_model "openai/text-embedding-3-small"
 
   @doc "True if Worth is missing any required configuration."
   def needs_setup? do

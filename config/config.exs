@@ -1,5 +1,8 @@
 import Config
 
+alias Ecto.Adapters.SQLite3
+alias Worth.Metrics.Repo
+
 # --- Data directory (OS-conventional, auto-detected) ---
 worth_data =
   case :os.type() do
@@ -36,18 +39,13 @@ config :mneme,
   database_adapter: Mneme.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo
 
-# --- Mneme Core Configuration ---
-# Default: local embeddings via Bumblebee (all-MiniLM-L6-v2, 384-dim).
-# Model is downloaded on first start. No API key needed.
 config :mneme,
   embedding: [
-    provider: Mneme.Embedding.Local
+    provider: Worth.Memory.Embeddings.Adapter,
+    tier: :embeddings
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
-
-# --- Nx (required for local embeddings) ---
-config :nx, default_backend: Nx.BinaryBackend
 
 # --- Phoenix ---
 config :phoenix, :json_library, Jason
@@ -63,11 +61,20 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
+# --- Metrics Database Configuration ---
+# Separate SQLite database for orchestration metrics so writes never
+# contend with the main database for I/O or lock time.
+config :worth, Repo,
+  adapter: SQLite3,
+  database: Path.join(worth_data, "metrics.db"),
+  pool_size: 2,
+  start_apps_before_migration: false
+
 # --- Database Configuration ---
 # Worth uses SQLite3 + sqlite-vec for zero-configuration local storage.
 # Database lives in the OS-conventional data directory.
 config :worth, Worth.Repo,
-  adapter: Ecto.Adapters.SQLite3,
+  adapter: SQLite3,
   database: Path.join(worth_data, "worth.db"),
   pool_size: 5
 
@@ -87,7 +94,7 @@ config :worth, WorthWeb.Endpoint,
 
 # --- Worth core ---
 config :worth,
-  ecto_repos: [Worth.Repo],
+  ecto_repos: [Worth.Repo, Repo],
   generators: [timestamp_type: :utc_datetime],
   # Default workspace directory - users can override via UI settings
   workspace_directory: "~/work",

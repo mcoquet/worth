@@ -40,7 +40,8 @@ defmodule Worth.MixProject do
         steps: [:assemble],
         applications: [
           worth: :permanent
-        ]
+        ],
+        validate_compile_env: false
       ]
     ]
   end
@@ -57,12 +58,9 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      # {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.1"},
-      {:mneme, path: "../mneme"},
-      # Local embedding support (optional - enables Mneme.Embedding.Local)
-      {:bumblebee, "~> 0.6.0"},
-      # {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.5"},
-      {:agent_ex, path: "../agent_ex"},
+      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.2"},
+
+      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.6"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},
@@ -114,12 +112,17 @@ defmodule Worth.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
-      "ecto.setup": ["ecto.create", "ecto.migrate"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      "ecto.setup": [
+        "ecto.create",
+        "ecto.create --repo Worth.Metrics.Repo",
+        "ecto.migrate",
+        "ecto.migrate --repo Worth.Metrics.Repo"
+      ],
+      "ecto.reset": ["ecto.drop", "ecto.drop --repo Worth.Metrics.Repo", "ecto.setup"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind worth", "esbuild worth"],
       "assets.deploy": ["tailwind worth --minify", "esbuild worth --minify", "phx.digest"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "ecto.migrate --quiet --repo Worth.Metrics.Repo", "test"]
     ]
   end
 end

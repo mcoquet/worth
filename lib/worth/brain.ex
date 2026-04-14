@@ -459,9 +459,19 @@ defmodule Worth.Brain do
       metadata: %{entry_type: "conversation_turn", role: "user"}
     )
 
+    agent_dirs =
+      if state.mode == :coding_agent do
+        Worth.CodingAgents.agent_private_dirs(state.profile)
+      else
+        []
+      end
+
+    allowed_roots = [workspace_path | agent_dirs]
+
     run_opts = [
       prompt: text,
       workspace: workspace_path,
+      allowed_roots: allowed_roots,
       callbacks: callbacks,
       profile: state.profile,
       mode: mode_to_agent_mode(state.mode),
@@ -532,7 +542,14 @@ defmodule Worth.Brain do
       end,
       knowledge_search: fn query, opts ->
         merged_opts = Keyword.merge(memory_opts, opts)
-        Manager.search(query, merged_opts)
+        result = Manager.search(query, merged_opts)
+
+        broadcast_workspace(
+          workspace,
+          {:agent_event, {:xray_memory_search, %{query: query, result_count: length(result)}}}
+        )
+
+        result
       end,
       knowledge_create: fn params ->
         content = params[:content]
@@ -544,7 +561,15 @@ defmodule Worth.Brain do
             metadata: Map.put(params[:metadata] || %{}, :workspace, workspace)
           )
 
-        Manager.remember(content, create_opts)
+        result = Manager.remember(content, create_opts)
+
+        broadcast_workspace(
+          workspace,
+          {:agent_event,
+           {:xray_memory_write, %{type: params[:entry_type] || "fact", content: String.slice(content, 0, 100)}}}
+        )
+
+        result
       end,
       knowledge_recent: fn _scope_id ->
         Manager.recent(memory_opts)

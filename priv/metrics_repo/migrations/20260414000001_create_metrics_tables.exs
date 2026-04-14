@@ -1,4 +1,5 @@
-defmodule Worth.Repo.Migrations.CreateMetricsTables do
+defmodule Worth.Metrics.Repo.Migrations.CreateMetricsTables do
+  @moduledoc false
   use Ecto.Migration
 
   def change do

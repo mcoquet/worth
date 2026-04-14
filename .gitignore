@@ -1,5 +1,6 @@
 /_build/
 /deps/
+/doc/
 /erl_crash.dump
 *.ez
 .idea/
@@ -40,3 +41,6 @@ erl_crash.dump
 worth_test.db
 worth_test.db-shm
 worth_test.db-wal
+
+# agent direcototies
+.claude/worktrees/

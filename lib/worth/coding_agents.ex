@@ -108,6 +108,24 @@ defmodule Worth.CodingAgents do
     end
   end
 
+  @doc """
+  Return the resolved private directories (config, logs, cache) for a coding agent.
+
+  These are OS-dependent paths that the agent needs access to for its own
+  configuration, skills, and logs. They do NOT include the Worth data directory.
+  """
+  def agent_private_dirs(protocol) when is_atom(protocol) do
+    case Discovery.agent_directories(protocol) do
+      nil ->
+        []
+
+      dirs ->
+        (dirs.config ++ dirs.logs ++ dirs.cache)
+        |> Enum.filter(&File.dir?/1)
+        |> Enum.uniq()
+    end
+  end
+
   @doc "Convert a protocol atom to a display-friendly name."
   def display_name(protocol) when is_atom(protocol) do
     case Discovery.lookup_known(protocol) do

@@ -79,6 +79,48 @@ Switch between workspaces with `/workspace switch <name>` in the chat, or launch
 worth --workspace my-project
 ```
 
+## Security & Sandboxing
+
+Worth treats agent filesystem access as a privileged operation and applies defense-in-depth isolation across three layers:
+
+### 1. Path Validation (All Platforms)
+
+All built-in file tools (`read_file`, `write_file`, `edit_file`, `list_files`) enforce an **explicit allowlist of roots**:
+
+- The active **workspace directory**
+- The agent's **own config/cache directories** (e.g. `~/.claude`, `~/.opencode`)
+
+This prevents:
+- Absolute path injection
+- `..` directory traversal
+- Symlink escapes
+- Access to sensitive system paths (`~/.ssh`, `/etc`, etc.)
+
+Importantly, coding agents **never** receive access to Worth's internal data directory (where your SQLite database, vault, and settings live).
+
+### 2. Shell Command Sandboxing
+
+The `bash` tool does not run raw shell commands with full user privileges. Instead, Worth wraps every command in an OS-specific sandbox:
+
+| Platform | Sandbox Mechanism |
+|----------|-------------------|
+| **Linux** | [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) — namespace isolation with read-only system mounts and writable workspace/agent directories only |
+| **macOS** | [App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-app-sandbox) inheritance — child processes automatically inherit the sandbox of the signed parent app |
+| **Windows + WSL2** | `wsl.exe bwrap ...` — Linux sandboxing runs inside WSL2 for full filesystem isolation |
+| **Windows (no WSL2)** | Restricted token + Job Object fallback. Because this is weaker than namespace isolation, Worth emits a **visible warning** at startup and when spawning agents |
+
+Sandbox selection is based on the **operating system** (`:os.type/0`), not on the presence of a binary in `$PATH`. This avoids silent failures (e.g. `bwrap` installed on macOS via Homebrew but unable to provide meaningful macOS isolation).
+
+### 3. Coding Agent CLI Sandboxing
+
+External coding agents such as **Claude Code** and **OpenCode** are spawned through the same sandbox runner as the `bash` tool. Even if the agent's internal tool system requests a file outside the allowed roots, the OS-level sandbox blocks the access.
+
+On Linux release builds, Worth attempts to use a **bundled static `bwrap` binary** so the sandbox works even on minimal distros that do not ship bubblewrap by default.
+
+### Agent Directory Discovery
+
+Worth maintains an ACP registry that tracks the per-OS config, log, and cache directories for every supported coding agent. When you switch to a coding agent, Worth automatically grants it access to its own home directories while keeping everything else locked down.
+
 ## Quick Start
 
 ### Desktop App

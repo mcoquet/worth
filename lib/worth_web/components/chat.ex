@@ -18,6 +18,7 @@ defmodule WorthWeb.Components.Chat do
   attr :models, :map, required: true
   attr :active_agents, :list, default: []
   attr :desktop_mode, :boolean, default: false
+  attr :xray, :boolean, default: false
 
   def chat_header(assigns) do
     ~H"""
@@ -50,6 +51,14 @@ defmodule WorthWeb.Components.Chat do
       </span>
 
       <div class="flex-1" />
+
+      <button
+        phx-click="toggle_xray"
+        class={"transition-colors cursor-pointer #{if @xray, do: "color(:accent)", else: "color(:text_dim) hover:color(:accent)"}"}
+        title="Toggle X-Ray debug mode"
+      >
+        <.icon name="hero-eye" class="w-4 h-4" />
+      </button>
 
       <button
         :if={@desktop_mode}
@@ -428,7 +437,11 @@ defmodule WorthWeb.Components.Chat do
       <%!-- Providers --%>
       <div :if={@catalog_info.providers != %{}} class="px-3 py-2">
         <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Providers</div>
-        <div :for={{id, stat} <- @catalog_info.providers} :if={stat.status != :no_creds} class={"text-xs #{color(:text_dim)}"}>
+        <div
+          :for={{id, stat} <- @catalog_info.providers}
+          :if={stat.status != :no_creds}
+          class={"text-xs #{color(:text_dim)}"}
+        >
           {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
         </div>
       </div>
@@ -532,5 +545,4 @@ defmodule WorthWeb.Components.Chat do
 
   defp format_int(n) when is_integer(n), do: Integer.to_string(n)
   defp format_int(_), do: "0"
-
 end

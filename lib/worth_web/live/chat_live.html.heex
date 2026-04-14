@@ -29,6 +29,7 @@
     models={@models}
     active_agents={@active_agents}
     desktop_mode={@desktop_mode}
+    xray={@xray}
   />
 
   <%!-- Body: left panel | chat | right sidebar --%>
@@ -97,6 +98,9 @@
 
       <%!-- Input (always visible) --%>
       <.input_bar mode={@mode} status={@status} />
+
+      <%!-- X-Ray debug panel --%>
+      <.xray_panel visible={@xray} events={@xray_events} />
     </div>
 
     <%!-- Right sidebar: metrics --%>

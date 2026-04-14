@@ -64,6 +64,12 @@ defmodule Worth.Memory.FactExtractor do
       {:ok, response} when is_binary(response) ->
         parse_json_array(response)
 
+      {:ok, [%{type: "text", text: response} | _rest]} ->
+        parse_json_array(response)
+
+      {:ok, [%{type: :text, text: response} | _rest]} ->
+        parse_json_array(response)
+
       _ ->
         {:ok, []}
     end

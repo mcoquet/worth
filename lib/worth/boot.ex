@@ -4,6 +4,7 @@ defmodule Worth.Boot do
   Used by both CLI and desktop bridge.
   """
 
+  alias Worth.Metrics.Repo, as: MetricsRepo
   alias Worth.Workspace.Service
 
   def run(opts \\ []) do
@@ -55,17 +56,44 @@ defmodule Worth.Boot do
 
   @repo_config Application.compile_env(:worth, Worth.Repo, database: nil)
 
+  @metrics_repo_config Application.compile_env(:worth, MetricsRepo, database: nil)
+
   def run_migrations! do
-    db_path = @repo_config[:database]
+    run_repo_migrations!(Worth.Repo, @repo_config)
+    run_repo_migrations!(MetricsRepo, @metrics_repo_config)
+  end
+
+  def run_migrations_before_start! do
+    run_repo_migrations_before_start!(Worth.Repo, @repo_config)
+    run_repo_migrations_before_start!(MetricsRepo, @metrics_repo_config)
+  end
+
+  defp run_repo_migrations_before_start!(repo, repo_config) do
+    db_path = repo_config[:database]
 
     if db_path do
       db_path |> Path.dirname() |> File.mkdir_p!()
     end
 
-    Ecto.Migrator.run(Worth.Repo, :up, all: true)
+    Ecto.Migrator.with_repo(repo, fn _repo ->
+      Ecto.Migrator.run(repo, :up, all: true)
+    end)
   rescue
     e ->
-      IO.warn("Migration failed: #{inspect(e)}")
+      IO.warn("[#{inspect(repo)}] Pre-start migration failed: #{inspect(e)}")
+  end
+
+  defp run_repo_migrations!(repo, repo_config) do
+    db_path = repo_config[:database]
+
+    if db_path do
+      db_path |> Path.dirname() |> File.mkdir_p!()
+    end
+
+    Ecto.Migrator.run(repo, :up, all: true)
+  rescue
+    e ->
+      IO.warn("[#{inspect(repo)}] Migration failed: #{inspect(e)}")
   end
 
   defp parse_mode("code"), do: :code

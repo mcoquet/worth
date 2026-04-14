@@ -4,6 +4,7 @@ defmodule WorthWeb.ChatLive do
 
   import WorthWeb.Components.Chat
   import WorthWeb.Components.Chat.Messages
+  import WorthWeb.Components.Chat.XRay
   import WorthWeb.Components.Settings
 
   alias AgentEx.LLM.Catalog
@@ -81,7 +82,9 @@ defmodule WorthWeb.ChatLive do
        memory_stats: fetch_memory_stats(workspace),
        strategy: :default,
        desktop_mode: System.get_env("WORTH_DESKTOP") == "1",
-       learning_step_shown: nil
+       learning_step_shown: nil,
+       xray: false,
+       xray_events: []
      )}
   end
 
@@ -106,6 +109,14 @@ defmodule WorthWeb.ChatLive do
 
   def handle_info({:global_event, _event}, socket) do
     {:noreply, socket}
+  end
+
+  def handle_info({:mcp_event, event}, socket) do
+    if socket.assigns.xray do
+      {:noreply, push_xray_event(socket, {:mcp, event})}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(:refresh_model, socket) do
@@ -199,6 +210,7 @@ defmodule WorthWeb.ChatLive do
       |> update(:turn, &(&1 + 1))
       |> push_input_history(text)
       |> stream_insert(:messages, %{id: msg_id(), type: :user, content: text})
+      |> assign(xray_events: [])
       |> push_event("clear_input", %{})
       |> push_event("scroll_to_bottom", %{})
 
@@ -300,7 +312,7 @@ defmodule WorthWeb.ChatLive do
   def handle_event("grant_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
     Permissions.grant(agent)
-    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Granted access to #{agent} data.")
+    socket = socket |> assign(learning_step_shown: nil) |> append_system_message("Granted access to #{agent} data.")
     send(self(), {:check_learning, socket.assigns.workspace})
     {:noreply, socket}
   end
@@ -308,10 +320,12 @@ defmodule WorthWeb.ChatLive do
   def handle_event("deny_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
     Permissions.deny(agent)
-    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Denied access to #{agent} data.")
+    socket = socket |> assign(learning_step_shown: nil) |> append_system_message("Denied access to #{agent} data.")
+
     if Permissions.unasked_agents() == [] do
       send(self(), {:check_learning, socket.assigns.workspace})
     end
+
     {:noreply, socket}
   end
 
@@ -319,7 +333,7 @@ defmodule WorthWeb.ChatLive do
     unasked = Permissions.unasked_agents()
     Enum.each(unasked, &Permissions.grant(&1.agent))
     names = Enum.map_join(unasked, ", ", & &1.agent)
-    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Granted access to: #{names}")
+    socket = socket |> assign(learning_step_shown: nil) |> append_system_message("Granted access to: #{names}")
     send(self(), {:check_learning, socket.assigns.workspace})
     {:noreply, socket}
   end
@@ -334,10 +348,16 @@ defmodule WorthWeb.ChatLive do
     case Jason.decode(projects_json) do
       {:ok, projects} when is_list(projects) ->
         ProjectMapping.set(workspace, agent, projects)
-        socket = assign(socket, learning_step_shown: nil) |> append_system_message("Mapped #{length(projects)} projects for #{agent}.")
-        unless ProjectMapping.needs_mapping?(workspace) do
+
+        socket =
+          socket
+          |> assign(learning_step_shown: nil)
+          |> append_system_message("Mapped #{length(projects)} projects for #{agent}.")
+
+        if !ProjectMapping.needs_mapping?(workspace) do
           send(self(), {:check_learning, workspace})
         end
+
         {:noreply, socket}
 
       _ ->
@@ -349,7 +369,10 @@ defmodule WorthWeb.ChatLive do
     discovered = ProjectMapping.discover()
     ProjectMapping.set_all(workspace, discovered)
     total = discovered |> Map.values() |> List.flatten() |> length()
-    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Mapped all #{total} discovered projects.")
+
+    socket =
+      socket |> assign(learning_step_shown: nil) |> append_system_message("Mapped all #{total} discovered projects.")
+
     send(self(), {:check_learning, workspace})
     {:noreply, socket}
   end
@@ -393,7 +416,26 @@ defmodule WorthWeb.ChatLive do
     {:noreply, update(socket, :sidebar_visible, &(!&1))}
   end
 
-def handle_event("keydown", %{"key" => "Escape"}, socket) do
+  def handle_event("toggle_xray", _params, socket) do
+    xray = !socket.assigns.xray
+
+    socket =
+      if xray do
+        Phoenix.PubSub.subscribe(Worth.PubSub, "mcp:events")
+        assign(socket, xray: true, xray_events: [])
+      else
+        Phoenix.PubSub.unsubscribe(Worth.PubSub, "mcp:events")
+        assign(socket, xray: false, xray_events: [])
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("clear_xray", _params, socket) do
+    {:noreply, assign(socket, xray_events: [])}
+  end
+
+  def handle_event("keydown", %{"key" => "Escape"}, socket) do
     if socket.assigns.view == :settings do
       {:noreply, assign(socket, view: :chat)}
     else
@@ -524,6 +566,13 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
         assign(socket, models: models)
 
       {:tool_use, name, _ws} when is_binary(name) ->
+        socket =
+          if socket.assigns.xray do
+            push_xray_event(socket, {:tool_call, %{name: name, status: :running}})
+          else
+            socket
+          end
+
         stream_insert(socket, :messages, %{
           id: msg_id(),
           type: :tool_call,
@@ -533,9 +582,16 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
       {:tool_use, nil, _ws} ->
         socket
 
-      {:tool_trace, name, _input, output, is_error, _ws} ->
+      {:tool_trace, name, input, output, is_error, _ws} ->
         status = if is_error, do: :failed, else: :success
         output_str = if is_binary(output), do: output, else: inspect(output)
+
+        socket =
+          if socket.assigns.xray do
+            push_xray_event(socket, {:tool_result, %{name: name, status: status, output: output_str, input: input}})
+          else
+            socket
+          end
 
         stream_insert(socket, :messages, %{
           id: msg_id(),
@@ -544,6 +600,13 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
         })
 
       {:tool_call, %{name: name, input: input}} ->
+        socket =
+          if socket.assigns.xray do
+            push_xray_event(socket, {:tool_call, %{name: name, status: :running, input: input}})
+          else
+            socket
+          end
+
         stream_insert(socket, :messages, %{
           id: msg_id(),
           type: :tool_call,
@@ -551,6 +614,13 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
         })
 
       {:tool_result, %{name: name, output: output}} ->
+        socket =
+          if socket.assigns.xray do
+            push_xray_event(socket, {:tool_result, %{name: name, status: :success, output: output}})
+          else
+            socket
+          end
+
         stream_insert(socket, :messages, %{
           id: msg_id(),
           type: :tool_result,
@@ -607,6 +677,27 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
         msg = "Learning failed: #{inspect(reason)}"
         stream_insert(socket, :messages, %{id: msg_id(), type: :error, content: msg})
 
+      {:model_selection_detail, detail} ->
+        if socket.assigns.xray do
+          push_xray_event(socket, {:model_selection, detail})
+        else
+          socket
+        end
+
+      {:xray_memory_search, info} ->
+        if socket.assigns.xray do
+          push_xray_event(socket, {:memory_search, info})
+        else
+          socket
+        end
+
+      {:xray_memory_write, info} ->
+        if socket.assigns.xray do
+          push_xray_event(socket, {:memory_write, info})
+        else
+          socket
+        end
+
       _ ->
         Logger.info("[ChatLive.process_event] Unhandled event: #{inspect(event)}")
         socket
@@ -614,6 +705,14 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
   end
 
   # ── Helpers ─────────────────────────────────────────────────────
+
+  defp push_xray_event(socket, {type, data}) do
+    timestamp = System.system_time(:millisecond)
+    entry = Map.merge(data, %{type: type, timestamp: timestamp})
+    current = socket.assigns.xray_events
+    updated = Enum.take(current ++ [entry], -100)
+    assign(socket, xray_events: updated)
+  end
 
   defp send_to_brain(text, socket) do
     Worth.Brain.cast_message(text, socket.assigns.workspace)
@@ -970,8 +1069,12 @@ def handle_event("keydown", %{"key" => "Escape"}, socket) do
 
   defp learning_step_for(report) do
     case Permissions.learning_consent() do
-      :unasked -> :consent
-      :denied -> nil
+      :unasked ->
+        :consent
+
+      :denied ->
+        nil
+
       :granted ->
         cond do
           report.unasked_agents != [] -> :agent_permissions
