@@ -36,9 +36,11 @@ defmodule WorthWeb.Components.Chat.Messages do
   end
 
   defp message_content(%{msg: %{type: :system}} = assigns) do
+    has_consent = Map.has_key?(assigns.msg, :learning_consent)
     has_learning = Map.has_key?(assigns.msg, :learning_report)
     has_permission = Map.has_key?(assigns.msg, :permission_agents)
     has_mapping = Map.has_key?(assigns.msg, :project_mapping)
+    assigns = assign(assigns, :has_consent, has_consent)
     assigns = assign(assigns, :has_learning, has_learning)
     assigns = assign(assigns, :has_permission, has_permission)
     assigns = assign(assigns, :has_mapping, has_mapping)
@@ -48,6 +50,7 @@ defmodule WorthWeb.Components.Chat.Messages do
       <span class="text-ctp-mauve font-bold shrink-0">sys</span>
       <div class="flex-1 min-w-0">
         <pre class="color(:text_muted) whitespace-pre-wrap text-xs">{@msg.content}</pre>
+        <.learning_consent_actions :if={@has_consent} />
         <.permission_actions :if={@has_permission} agents={@msg.permission_agents} />
         <.project_mapping_actions :if={@has_mapping} projects={@msg.project_mapping} workspace={@msg.mapping_workspace} />
         <.learning_actions :if={@has_learning} report={@msg.learning_report} />
@@ -113,6 +116,25 @@ defmodule WorthWeb.Components.Chat.Messages do
   end
 
   # ── Learning Actions ────────────────────────────────────────────
+
+  defp learning_consent_actions(assigns) do
+    ~H"""
+    <div class="flex gap-2 mt-2">
+      <button
+        phx-click="enable_learning"
+        class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+      >
+        Yes, enable learning
+      </button>
+      <button
+        phx-click="disable_learning"
+        class={"px-2 py-1 rounded text-xs font-semibold transition-colors #{color(:button_secondary)} cursor-pointer"}
+      >
+        No thanks
+      </button>
+    </div>
+    """
+  end
 
   attr :agents, :list, required: true
 

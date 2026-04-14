@@ -36,6 +36,39 @@ defmodule Worth.Learning.Permissions do
   """
 
   @permission_key "agent_permissions"
+  @learning_consent_key "learning_consent"
+
+  # ── Global learning consent ──────────────────────────────────
+
+  @doc """
+  Returns the global learning consent: `:granted`, `:denied`, or `:unasked`.
+
+  This is the top-level gate — if unasked or denied, no learning questions
+  should be shown.
+  """
+  def learning_consent do
+    case Worth.Settings.get(@learning_consent_key) do
+      "granted" -> :granted
+      "denied" -> :denied
+      _ -> :unasked
+    end
+  rescue
+    _ -> :unasked
+  end
+
+  @doc "Grant global learning consent."
+  def enable_learning do
+    Worth.Settings.put(@learning_consent_key, "granted", "preference")
+    :ok
+  end
+
+  @doc "Deny global learning consent."
+  def disable_learning do
+    Worth.Settings.put(@learning_consent_key, "denied", "preference")
+    :ok
+  end
+
+  # ── Per-agent permissions ────────────────────────────────────
 
   @doc "Returns `:granted`, `:denied`, or `:unasked` for the given agent."
   def check(agent) when is_atom(agent) do
@@ -62,13 +95,12 @@ defmodule Worth.Learning.Permissions do
   def unasked_agents do
     permissions = load_permissions()
 
-    coding_agent_providers()
-    |> Enum.filter(fn provider ->
-      provider.available?() and
-        not Map.has_key?(permissions, to_string(provider.agent_name()))
+    provider_configs_with_meta()
+    |> Enum.filter(fn {_mod, config} ->
+      not Map.has_key?(permissions, to_string(config.agent))
     end)
-    |> Enum.map(fn provider ->
-      %{agent: provider.agent_name(), data_paths: provider.data_paths(), status: :unasked}
+    |> Enum.map(fn {_mod, config} ->
+      %{agent: config.agent, data_paths: config.data_paths, status: :unasked}
     end)
   end
 
@@ -81,15 +113,14 @@ defmodule Worth.Learning.Permissions do
   def all_statuses do
     permissions = load_permissions()
 
-    Enum.map(coding_agent_providers(), fn provider ->
-      name = provider.agent_name()
-      available = provider.available?()
-      status = Map.get(permissions, to_string(name), if(available, do: :unasked, else: :unavailable))
+    Enum.map(provider_configs_with_meta(), fn {_mod, config} ->
+      name = config.agent
+      status = Map.get(permissions, to_string(name), if(config.available, do: :unasked, else: :unavailable))
 
       %{
         agent: name,
-        data_paths: provider.data_paths(),
-        available: available,
+        data_paths: config.data_paths,
+        available: config.available,
         permission: status
       }
     end)
@@ -132,7 +163,13 @@ defmodule Worth.Learning.Permissions do
     :ok
   end
 
-  defp coding_agent_providers do
-    Mneme.Learner.CodingAgent.providers()
+  defp provider_configs_with_meta do
+    Worth.Learning.AgentConfig.provider_configs_for_mneme()
+    |> Enum.map(fn {mod, config} ->
+      name = mod.agent_name()
+      available = mod.available?(config)
+      {mod, Map.merge(config, %{agent: name, available: available})}
+    end)
+    |> Enum.filter(fn {_mod, config} -> config.available end)
   end
 end
