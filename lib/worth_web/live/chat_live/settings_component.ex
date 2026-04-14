@@ -16,7 +16,7 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
+    <div class="flex-1 flex flex-col overflow-hidden">
       <.settings_panel settings_form={@settings_form} target={@myself} />
     </div>
     """

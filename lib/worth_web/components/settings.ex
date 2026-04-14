@@ -755,8 +755,6 @@ defmodule WorthWeb.Components.Settings do
     all_prefs =
       Enum.map(@known_preferences, fn {key, label} ->
         value = Enum.find_value(assigns.preferences, "", fn s -> if s.key == key, do: s.value end)
-        attr :target, :any, required: true
-
         %{key: key, label: label, value: value}
       end)
 

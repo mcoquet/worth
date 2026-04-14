@@ -1,7 +1,5 @@
 <%!-- Theme CSS (dynamically updated on theme switch) --%>
-<style id="theme-css">
-  {raw(@theme_module.css())}
-</style>
+{raw("<style id=\"theme-css\">#{@theme_module.css()}</style>")}
 <div id="theme-manager" phx-hook="ThemeManager" class="hidden"></div>
 
 <%!-- Onboarding view (full screen, no header/sidebar) --%>
@@ -35,7 +33,7 @@
 
   <%!-- Body: left panel | chat | right sidebar --%>
   <div class="flex flex-1 overflow-hidden">
-    <%!-- Left panel --%>
+    <%!-- Left panel: workspace context --%>
     <.left_panel
       :if={@sidebar_visible}
       workspace={@workspace}
@@ -43,6 +41,9 @@
       files={@workspace_files}
       agents={@active_agents}
       memory_stats={@memory_stats}
+      mode={@mode}
+      models={@models}
+      model_routing={@model_routing}
     />
 
     <%!-- Center pane: chat or settings --%>
@@ -98,16 +99,12 @@
       <.input_bar mode={@mode} status={@status} />
     </div>
 
-    <%!-- Right sidebar --%>
-    <.sidebar
+    <%!-- Right sidebar: metrics --%>
+    <.metrics_panel
       :if={@sidebar_visible}
-      tab={@selected_tab}
       models={@models}
-      model_routing={@model_routing}
       cost={@cost}
       turn={@turn}
-      mode={@mode}
-      workspace={@workspace}
     />
   </div>
 </div>

@@ -101,12 +101,26 @@ defmodule WorthWeb.Components.Chat do
   attr :files, :list, default: []
   attr :agents, :list, default: []
   attr :memory_stats, :map, default: %{}
+  attr :mode, :atom, required: true
+  attr :models, :map, required: true
+  attr :model_routing, :map, default: %{mode: "auto"}
 
   def left_panel(assigns) do
+    skills =
+      try do
+        Worth.Skill.Registry.all()
+      rescue
+        _ -> []
+      catch
+        :exit, _ -> []
+      end
+
+    assigns = assign(assigns, :skills, skills)
+
     ~H"""
     <aside class={"w-56 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-r"}>
       <div class={"px-3 py-2 font-bold text-xs uppercase tracking-wider #{color(:primary)} bg-opacity-10"}>
-        Navigator
+        Workspace
       </div>
 
       <%!-- Workspaces --%>
@@ -122,8 +136,52 @@ defmodule WorthWeb.Components.Chat do
         </div>
       </div>
 
-      <%!-- Memory Inspector --%>
-      <.memory_inspector workspace={@workspace} stats={@memory_stats} />
+      <%!-- Agents --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Agents</div>
+        <div :if={@agents == []} class={"text-xs #{color(:text_dim)}"}>o idle</div>
+        <div :for={agent <- @agents} class="text-xs py-px">
+          <.agent_row agent={agent} />
+        </div>
+      </div>
+
+      <%!-- Model --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Model</div>
+        <div class={"text-xs space-y-0.5 #{color(:text_muted)}"}>
+          <div :if={@model_routing[:mode] == "manual" and @model_routing[:manual_model]}>
+            <span class={color(:primary)}>{manual_model_label(@model_routing.manual_model)}</span>
+            <div class={"#{color(:text_dim)} text-[10px]"}>manual · /model auto to switch</div>
+          </div>
+          <div :if={@model_routing[:mode] != "manual" or !@model_routing[:manual_model]}>
+            <div class={color(:primary)}>primary</div>
+            <div class={color(:text_muted)}>{model_short(@models, :primary)}</div>
+            <div class={"#{color(:primary)} mt-1"}>light</div>
+            <div class={color(:text_muted)}>{model_short(@models, :lightweight)}</div>
+            <div class={"#{color(:text_dim)} text-[10px] mt-1"}>{routing_mode_label(@model_routing)}</div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Tools --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Tools</div>
+        <div
+          :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)}
+          class={"text-xs #{color(:text_muted)} py-px"}
+        >
+          {tool}
+        </div>
+      </div>
+
+      <%!-- Skills --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Skills</div>
+        <div :if={@skills == []} class={"text-xs #{color(:text_dim)}"}>(none)</div>
+        <div :for={s <- @skills} class={"text-xs #{color(:text_muted)} py-px"}>
+          {s.name} <span class={color(:text_dim)}>[{s.trust_level}]</span>
+        </div>
+      </div>
 
       <%!-- Files --%>
       <div class="px-3 py-2">
@@ -134,14 +192,8 @@ defmodule WorthWeb.Components.Chat do
         </div>
       </div>
 
-      <%!-- Agents --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Agents</div>
-        <div :if={@agents == []} class={"text-xs #{color(:text_dim)}"}>o idle</div>
-        <div :for={agent <- @agents} class="text-xs py-px">
-          <.agent_row agent={agent} />
-        </div>
-      </div>
+      <%!-- Memory Inspector --%>
+      <.memory_inspector workspace={@workspace} stats={@memory_stats} />
     </aside>
     """
   end
@@ -159,7 +211,7 @@ defmodule WorthWeb.Components.Chat do
     assigns = assign(assigns, working_count: working_count, recent_count: recent_count, memory_enabled: memory_enabled)
 
     ~H"""
-    <div class="px-3 py-2 border-t #{color(:border)}">
+    <div class="px-3 py-2">
       <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)} flex items-center justify-between"}>
         <span>Memory</span>
         <span :if={!@memory_enabled} class={"#{color(:warning)} text-[10px]"}>disabled</span>
@@ -227,151 +279,13 @@ defmodule WorthWeb.Components.Chat do
 
   defp agent_label(agent), do: agent.label || agent.session_id
 
-  # ── Sidebar ─────────────────────────────────────────────────────
+  # ── Metrics Panel (right sidebar) ────────────────────────────────
 
-  @tabs [
-    {:status, "Status"},
-    {:usage, "Usage"},
-    {:tools, "Tools"},
-    {:skills, "Skills"},
-    {:logs, "Logs"}
-  ]
-
-  attr :tab, :atom, required: true
   attr :models, :map, required: true
-  attr :model_routing, :map, default: %{mode: "auto"}
   attr :cost, :float, required: true
   attr :turn, :integer, required: true
-  attr :mode, :atom, required: true
-  attr :workspace, :string, default: "personal"
 
-  def sidebar(assigns) do
-    assigns = assign(assigns, :tabs, @tabs)
-
-    ~H"""
-    <aside class="w-72 color(:background) border-l color(:border) overflow-y-auto shrink-0 text-sm">
-      <div class="p-3 space-y-4">
-        <.tab_content
-          tab={:status}
-          models={@models}
-          model_routing={@model_routing}
-          cost={@cost}
-          turn={@turn}
-          mode={@mode}
-          workspace={@workspace}
-        />
-        <.tab_content
-          tab={:usage}
-          models={@models}
-          model_routing={@model_routing}
-          cost={@cost}
-          turn={@turn}
-          mode={@mode}
-          workspace={@workspace}
-        />
-        <.tab_content
-          tab={:tools}
-          models={@models}
-          model_routing={@model_routing}
-          cost={@cost}
-          turn={@turn}
-          mode={@mode}
-          workspace={@workspace}
-        />
-        <.tab_content
-          tab={:skills}
-          models={@models}
-          model_routing={@model_routing}
-          cost={@cost}
-          turn={@turn}
-          mode={@mode}
-          workspace={@workspace}
-        />
-        <.tab_content
-          tab={:logs}
-          models={@models}
-          model_routing={@model_routing}
-          cost={@cost}
-          turn={@turn}
-          mode={@mode}
-          workspace={@workspace}
-        />
-      </div>
-    </aside>
-    """
-  end
-
-  defp tab_content(%{tab: :status} = assigns) do
-    catalog_info =
-      try do
-        AgentEx.LLM.Catalog.info()
-      rescue
-        _ -> %{model_count: 0, providers: %{}}
-      catch
-        :exit, _ -> %{model_count: 0, providers: %{}}
-      end
-
-    coding_agents =
-      try do
-        Worth.CodingAgents.discover()
-      rescue
-        _ -> []
-      catch
-        :exit, _ -> []
-      end
-
-    assigns =
-      assigns
-      |> assign(:catalog_info, catalog_info)
-      |> assign(:coding_agents, coding_agents)
-
-    ~H"""
-    <div class="color(:text_muted) space-y-1">
-      <div>Mode: {@mode}</div>
-      <div class="color(:accent)">Cost: {cost_display(@cost)}</div>
-      <div>Turns: {@turn}</div>
-    </div>
-
-    <div class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Model</div>
-      <div :if={@model_routing[:mode] == "manual" and @model_routing[:manual_model]} class="text-xs space-y-0.5">
-        <div class="color(:primary) font-medium">{manual_model_label(@model_routing.manual_model)}</div>
-        <div class="color(:text_dim)">manual · /model auto to switch</div>
-      </div>
-      <div :if={@model_routing[:mode] != "manual" or !@model_routing[:manual_model]} class="text-xs space-y-0.5">
-        <div class="flex justify-between">
-          <span class="color(:text_dim)">primary</span>
-          <span class="color(:text_muted)">{model_short(@models, :primary)}</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="color(:text_dim)">light</span>
-          <span class="color(:text_muted)">{model_short(@models, :lightweight)}</span>
-        </div>
-        <div class="color(:text_dim) mt-0.5">{routing_mode_label(@model_routing)}</div>
-      </div>
-    </div>
-
-    <div :if={@catalog_info.providers != %{}} class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Providers</div>
-      <div :for={{id, stat} <- @catalog_info.providers} :if={stat.status != :no_creds} class="text-xs color(:text_dim)">
-        {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
-      </div>
-    </div>
-
-    <div :if={@coding_agents != []} class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Coding Agents</div>
-      <div :for={agent <- @coding_agents} class="text-xs flex items-center gap-1">
-        <span class={if agent.available, do: "text-ctp-green", else: "color(:text_dim)"}>
-          {if agent.available, do: "●", else: "○"}
-        </span>
-        <span class="color(:text_muted)">{agent.display_name}</span>
-        <span class="color(:text_dim)">({agent.cli_name})</span>
-      </div>
-    </div>
-    """
-  end
-
-  defp tab_content(%{tab: :usage} = assigns) do
+  def metrics_panel(assigns) do
     default_metrics = %{
       cost: 0.0,
       calls: 0,
@@ -399,142 +313,138 @@ defmodule WorthWeb.Components.Chat do
 
     avg_cost_per_call = if metrics.calls > 0, do: metrics.cost / metrics.calls, else: 0.0
 
+    catalog_info =
+      try do
+        AgentEx.LLM.Catalog.info()
+      rescue
+        _ -> %{model_count: 0, providers: %{}}
+      catch
+        :exit, _ -> %{model_count: 0, providers: %{}}
+      end
+
+    coding_agents =
+      try do
+        Worth.CodingAgents.discover()
+      rescue
+        _ -> []
+      catch
+        :exit, _ -> []
+      end
+
     assigns =
       assigns
       |> assign(:metrics, metrics)
       |> assign(:duration_min, duration_min)
       |> assign(:avg_cost, avg_cost_per_call)
+      |> assign(:catalog_info, catalog_info)
+      |> assign(:coding_agents, coding_agents)
 
     ~H"""
-    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Session</div>
-    <div class="text-xs color(:text_muted) space-y-0.5">
-      <div class="flex justify-between">
-        <span>Duration:</span>
-        <span>{@duration_min}m</span>
+    <aside class={"w-64 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-l"}>
+      <div class={"px-3 py-2 font-bold text-xs uppercase tracking-wider #{color(:primary)} bg-opacity-10"}>
+        Metrics
       </div>
-      <div class="flex justify-between">
-        <span>Cost:</span>
-        <span class={color(:accent)}>${Float.round(@metrics.cost, 4)}</span>
-      </div>
-      <div class="flex justify-between">
-        <span>Calls:</span>
-        <span>{@metrics.calls}</span>
-      </div>
-      <div class="flex justify-between color(:text_dim)">
-        <span>Avg/call:</span>
-        <span>${Float.round(@avg_cost, 4)}</span>
-      </div>
-    </div>
 
-    <div class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Tokens</div>
-      <div class="text-xs color(:text_muted) space-y-0.5">
-        <div class="flex justify-between">
-          <span>Input:</span>
-          <span>{format_int(@metrics.input_tokens)}</span>
-        </div>
-        <div class="flex justify-between">
-          <span>Output:</span>
-          <span>{format_int(@metrics.output_tokens)}</span>
-        </div>
-        <div class="flex justify-between color(:text_dim)">
-          <span>Total:</span>
-          <span>{format_int(@metrics.input_tokens + @metrics.output_tokens)}</span>
+      <%!-- Session --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Session</div>
+        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+          <div class="flex justify-between">
+            <span>Duration:</span>
+            <span>{@duration_min}m</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Cost:</span>
+            <span class={color(:accent)}>{cost_display(@cost)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Turns:</span>
+            <span>{@turn}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Calls:</span>
+            <span>{@metrics.calls}</span>
+          </div>
+          <div class={"flex justify-between #{color(:text_dim)}"}>
+            <span>Avg/call:</span>
+            <span>${Float.round(@avg_cost, 4)}</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Cache & Embeddings</div>
-      <div class="text-xs color(:text_muted) space-y-0.5">
-        <div class="flex justify-between">
-          <span>Cache read:</span>
-          <span class={color(:success)}>{format_int(@metrics.cache_read)}</span>
-        </div>
-        <div class="flex justify-between">
-          <span>Cache write:</span>
-          <span class={color(:warning)}>{format_int(@metrics.cache_write)}</span>
-        </div>
-        <div class="flex justify-between">
-          <span>Embeddings:</span>
-          <span>{@metrics.embed_calls} calls</span>
-        </div>
-        <div class="flex justify-between color(:text_dim)">
-          <span>Embed cost:</span>
-          <span>${Float.round(@metrics.embed_cost, 4)}</span>
+      <%!-- Tokens --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Tokens</div>
+        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+          <div class="flex justify-between">
+            <span>Input:</span>
+            <span>{format_int(@metrics.input_tokens)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Output:</span>
+            <span>{format_int(@metrics.output_tokens)}</span>
+          </div>
+          <div class={"flex justify-between #{color(:text_dim)}"}>
+            <span>Total:</span>
+            <span>{format_int(@metrics.input_tokens + @metrics.output_tokens)}</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div :if={@metrics.by_provider != %{}} class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">By Provider</div>
-      <div :for={{provider, p} <- @metrics.by_provider} class="text-xs color(:text_dim)">
-        <div class="flex justify-between">
-          <span>{provider}:</span>
-          <span>${Float.round(p.cost, 4)} ({p.calls})</span>
+      <%!-- Cache & Embeddings --%>
+      <div class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Cache & Embeddings</div>
+        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+          <div class="flex justify-between">
+            <span>Cache read:</span>
+            <span class={color(:success)}>{format_int(@metrics.cache_read)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Cache write:</span>
+            <span class={color(:warning)}>{format_int(@metrics.cache_write)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Embeddings:</span>
+            <span>{@metrics.embed_calls} calls</span>
+          </div>
+          <div class={"flex justify-between #{color(:text_dim)}"}>
+            <span>Embed cost:</span>
+            <span>${Float.round(@metrics.embed_cost, 4)}</span>
+          </div>
         </div>
       </div>
-    </div>
-    """
-  end
 
-  defp tab_content(%{tab: :tools} = assigns) do
-    ~H"""
-    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Built-in Tools</div>
-    <div
-      :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)}
-      class="text-xs color(:text_muted) py-px"
-    >
-      {tool}
-    </div>
-    """
-  end
+      <%!-- By Provider --%>
+      <div :if={@metrics.by_provider != %{}} class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>By Provider</div>
+        <div :for={{provider, p} <- @metrics.by_provider} class={"text-xs #{color(:text_dim)}"}>
+          <div class="flex justify-between">
+            <span>{provider}:</span>
+            <span>${Float.round(p.cost, 4)} ({p.calls})</span>
+          </div>
+        </div>
+      </div>
 
-  defp tab_content(%{tab: :skills} = assigns) do
-    skills =
-      try do
-        Worth.Skill.Registry.all()
-      rescue
-        _ -> []
-      catch
-        :exit, _ -> []
-      end
+      <%!-- Providers --%>
+      <div :if={@catalog_info.providers != %{}} class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Providers</div>
+        <div :for={{id, stat} <- @catalog_info.providers} :if={stat.status != :no_creds} class={"text-xs #{color(:text_dim)}"}>
+          {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
+        </div>
+      </div>
 
-    assigns = assign(assigns, :skills, skills)
-
-    ~H"""
-    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Skills</div>
-    <div :if={@skills == []} class="text-xs color(:text_dim)">(none)</div>
-    <div :for={s <- @skills} class="text-xs color(:text_muted) py-px">
-      {s.name} <span class="color(:text_dim)">[{s.trust_level}]</span>
-    </div>
-    """
-  end
-
-  defp tab_content(%{tab: :logs} = assigns) do
-    entries =
-      try do
-        Worth.LogBuffer.recent(50)
-      rescue
-        _ -> []
-      catch
-        :exit, _ -> []
-      end
-
-    assigns = assign(assigns, :entries, entries)
-
-    ~H"""
-    <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Logs</div>
-    <div :if={@entries == []} class="text-xs color(:text_dim)">(no log entries)</div>
-    <div :for={entry <- @entries} class={["text-xs py-px font-mono", log_color_class(entry.level)]}>
-      [{short_level(entry.level)}] {truncate(entry.text)}
-    </div>
-    """
-  end
-
-  defp tab_content(assigns) do
-    ~H"""
-    <div class="color(:text_dim) text-xs">Unknown tab</div>
+      <%!-- Coding Agents --%>
+      <div :if={@coding_agents != []} class="px-3 py-2">
+        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Coding Agents</div>
+        <div :for={agent <- @coding_agents} class="text-xs flex items-center gap-1">
+          <span class={if agent.available, do: "text-ctp-green", else: color(:text_dim)}>
+            {if agent.available, do: "●", else: "○"}
+          </span>
+          <span class={color(:text_muted)}>{agent.display_name}</span>
+          <span class={color(:text_dim)}>({agent.cli_name})</span>
+        </div>
+      </div>
+    </aside>
     """
   end
 
@@ -623,26 +533,4 @@ defmodule WorthWeb.Components.Chat do
   defp format_int(n) when is_integer(n), do: Integer.to_string(n)
   defp format_int(_), do: "0"
 
-  defp short_level(:emergency), do: "emrg"
-  defp short_level(:alert), do: "alrt"
-  defp short_level(:critical), do: "crit"
-  defp short_level(:error), do: "err "
-  defp short_level(:warning), do: "warn"
-  defp short_level(:notice), do: "note"
-  defp short_level(:info), do: "info"
-  defp short_level(:debug), do: "dbg "
-  defp short_level(other), do: to_string(other)
-
-  defp log_color_class(level) when level in [:emergency, :alert, :critical, :error], do: "color(:error)"
-  defp log_color_class(:warning), do: "color(:accent)"
-  defp log_color_class(:notice), do: "color(:primary)"
-  defp log_color_class(:info), do: "color(:text)"
-  defp log_color_class(:debug), do: "color(:text_dim)"
-  defp log_color_class(_), do: "color(:text)"
-
-  defp truncate(line) do
-    line
-    |> String.replace("\n", " ")
-    |> String.slice(0, 200)
-  end
 end
