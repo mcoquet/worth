@@ -1,7 +1,7 @@
 # Worth Codebase Cleanup Roadmap
 
-> **Status:** P0–P1 cleanup complete — 127 tests passing  
-> **Last reviewed:** 2026-04-13  
+> **Status:** P0–P3 cleanup complete — 126 tests passing  
+> **Last reviewed:** 2026-04-14  
 > **Scope:** Elixir patterns, Phoenix/LiveView consistency, dependency hygiene, frontend assets, test coverage, and code quality tooling.
 
 ---
@@ -474,9 +474,14 @@
 - [ ] **B.** Inline refactor: break into private helpers without creating new files.
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** B — inline refactor into private helpers without creating new files.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.** Refactored `Worth.Brain`:
+- `execute_agent_loop/3` extracted into `append_user_turn/3`, `fetch_system_prompt/2`, `push_working_memory/2`, and `build_run_opts/6`.
+- `build_callbacks/2` extracted into `core_callbacks/4`, `llm_chat_callback/2`, `memory_callbacks/1`, `tool_callbacks/3`, `spawn_fact_extraction/2`, `search_tools_callback/2`, and `get_tool_schema_callback/1`.
 
 ---
 
@@ -493,9 +498,14 @@
 - [ ] **B.** Monitor or link the startup tasks in `Worth.Application.start/2`, or move them to a dedicated `Worth.Bootstrap` GenServer that reports success/failure.
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** A + B — use `handle_continue` for Brain init and add error-logging wrappers for application startup tasks.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.**
+- `Worth.Brain.init/1` now returns `{:ok, state, {:continue, :init_routing}}`; blocking work moved to `handle_continue(:init_routing, state)`.
+- `Worth.Application.start/2` startup tasks are wrapped in `start_init_task/2` with `try/rescue/catch` logging so crashes are visible but non-fatal.
 
 ---
 
@@ -511,9 +521,12 @@
 - [ ] **B.** Refactor `ThemeHelper.color/1` to return fully static class maps (e.g., a giant `case` or map lookup).
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** A — add `@source` for theme modules so Tailwind scans the literal class strings in `lib/worth/theme/*.ex`.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.** Added `@source "../../lib/worth/theme"` to `assets/css/app.css` so Tailwind v4 sees all literal `ctp-*` and arbitrary value classes defined in the theme modules.
 
 ---
 
@@ -529,9 +542,12 @@
 - [ ] **B.** Create a `WorthWeb.Hooks` module that exports hook name atoms and documents contracts in Elixir docs.
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** A — add HEEx comments above each `phx-hook` element documenting the expected hook name and behavior.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.** Added comments in `lib/worth_web/live/chat_live.html.heex` and `lib/worth_web/components/chat.ex` documenting `ThemeManager`, `ChatScroll`, and `InputFocus` hooks.
 
 ---
 
@@ -545,9 +561,16 @@
 - [ ] **B.** Generate a tiny JSON manifest at build time that both backend and frontend consume.
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** A — inject the command list into LiveView socket assigns and read it from a `data-commands` attribute in the hook.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.**
+- Added `Worth.UI.Commands.commands/0` returning the canonical command list.
+- `ChatLive.mount/3` assigns `commands` to the socket.
+- `chat.ex` `input_bar` renders `data-commands={Jason.encode!(@commands)}` on the chat input.
+- `assets/js/app.js` `InputFocus` hook parses `this.el.dataset.commands` and removes the hardcoded `COMMANDS` array.
 
 ---
 
@@ -561,9 +584,12 @@
 - [ ] **A.** Migrate `.flash-info`, `.flash-error`, etc. to `@utility flash-info { ... }` syntax.
 
 ### Decision
-- **Chosen option:** ___
+- **Chosen option:** A — migrate `.flash-info`, `.flash-error` to `@utility` declarations.
 - **Owner:** ___
 - **Target PR:** ___
+
+### Status
+✅ **Complete.** Converted `.flash-info` and `.flash-error` rules in `assets/css/app.css` to Tailwind v4 `@utility` syntax.
 
 ---
 
