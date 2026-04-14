@@ -261,13 +261,15 @@ defmodule Worth.Brain do
         {:reply, {:error, :unknown_strategy}, state}
 
       mod ->
-        case mod.init(opts) do
-          {:ok, strategy_state} ->
+        init_opts = Keyword.put(opts, :workspace, state.current_workspace)
+
+        case mod.init(init_opts) do
+          {:ok, _strategy_state} ->
             new_state = %{
               state
               | strategy: strategy_id,
-                strategy_state: strategy_state,
-                strategy_opts: opts
+                strategy_state: nil,
+                strategy_opts: init_opts
             }
 
             {:reply, :ok, new_state}

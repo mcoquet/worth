@@ -31,15 +31,13 @@ defmodule WorthWeb.Commands.SystemCommands do
 
   def handle({:strategy, :list}, socket) do
     strategies =
-      AgentEx.Strategy.Registry.all()
-      |> Enum.map(fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
-      |> Enum.join("\n")
+      Enum.map_join(AgentEx.Strategy.Registry.all(), "\n", fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
 
     append_system(socket, "Available strategies:\n#{strategies}")
   end
 
   def handle({:strategy, {:switch, name}}, socket) do
-    strategy_id = String.to_atom(name)
+    strategy_id = String.to_existing_atom(name)
 
     case Worth.Brain.switch_strategy(socket.assigns.workspace, strategy_id) do
       :ok ->
