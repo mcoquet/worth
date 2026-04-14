@@ -65,16 +65,12 @@ defmodule WorthWeb.ExperimentLive do
 
   @impl true
   def handle_event("run", %{"id" => id}, socket) do
-    case ExperimentService.run_experiment(id) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Experiment started")
-         |> assign(:experiments, ExperimentService.list())}
+    {:ok, _} = ExperimentService.run_experiment(id)
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, inspect(reason))}
-    end
+    {:noreply,
+     socket
+     |> put_flash(:info, "Experiment started")
+     |> assign(:experiments, ExperimentService.list())}
   end
 
   @impl true

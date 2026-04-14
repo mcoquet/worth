@@ -14,6 +14,8 @@ defmodule Worth.Metrics.Writer do
   alias Worth.Metrics.Schema.ToolCallMetric
   alias Worth.Repo
 
+  import Ecto.Query
+
   require Logger
 
   @handler_id "worth-metrics-writer"
