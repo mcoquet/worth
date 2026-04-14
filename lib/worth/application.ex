@@ -16,6 +16,7 @@ defmodule Worth.Application do
       {Registry, keys: :unique, name: Worth.Registry},
       {Task.Supervisor, name: Worth.TaskSupervisor},
       Worth.Metrics,
+      Worth.Metrics.Writer,
       Worth.Agent.Tracker,
       Broker,
       Worth.Mcp.ConnectionMonitor,
