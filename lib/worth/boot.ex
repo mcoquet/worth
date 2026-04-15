@@ -42,10 +42,12 @@ defmodule Worth.Boot do
     url()
   end
 
-  @endpoint_config Application.compile_env(:worth, WorthWeb.Endpoint, http: [port: 4090])
-
   def url do
-    port = get_in(@endpoint_config, [:http, :port]) || 4090
+    port =
+      :worth
+      |> Application.get_env(WorthWeb.Endpoint, [])
+      |> get_in([:http, :port]) || 4090
+
     "http://localhost:#{port}"
   end
 
@@ -54,18 +56,17 @@ defmodule Worth.Boot do
       System.get_env("WORTH_AUTO_MIGRATE") == "1"
   end
 
-  @repo_config Application.compile_env(:worth, Worth.Repo, database: nil)
-
-  @metrics_repo_config Application.compile_env(:worth, MetricsRepo, database: nil)
+  defp repo_config, do: Application.get_env(:worth, Worth.Repo, [])
+  defp metrics_repo_config, do: Application.get_env(:worth, MetricsRepo, [])
 
   def run_migrations! do
-    run_repo_migrations!(Worth.Repo, @repo_config)
-    run_repo_migrations!(MetricsRepo, @metrics_repo_config)
+    run_repo_migrations!(Worth.Repo, repo_config())
+    run_repo_migrations!(MetricsRepo, metrics_repo_config())
   end
 
   def run_migrations_before_start! do
-    run_repo_migrations_before_start!(Worth.Repo, @repo_config)
-    run_repo_migrations_before_start!(MetricsRepo, @metrics_repo_config)
+    run_repo_migrations_before_start!(Worth.Repo, repo_config())
+    run_repo_migrations_before_start!(MetricsRepo, metrics_repo_config())
   end
 
   defp run_repo_migrations_before_start!(repo, repo_config) do

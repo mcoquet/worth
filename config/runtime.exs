@@ -7,6 +7,21 @@ end
 desktop_mode = System.get_env("WORTH_DESKTOP") == "1"
 port = String.to_integer(System.get_env("PORT", "4090"))
 
+# --- Resolve data directory at runtime ---
+# This MUST happen at runtime so that Path.expand("~") resolves to the
+# *current* user's home rather than the build machine's home (e.g. /home/runner).
+worth_data =
+  case :os.type() do
+    {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
+    {:win32, _} -> "LOCALAPPDATA" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
+    {:unix, _} -> "XDG_DATA_HOME" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
+  end
+
+config :agent_ex, catalog: [persist_path: Path.join(worth_data, "catalog.json")]
+
+config :worth, Worth.Metrics.Repo, database: Path.join(worth_data, "metrics.db")
+config :worth, Worth.Repo, database: Path.join(worth_data, "worth.db")
+
 if desktop_mode do
   config :worth, WorthWeb.Endpoint,
     http: [

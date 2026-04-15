@@ -4,12 +4,21 @@ alias Ecto.Adapters.SQLite3
 alias Worth.Memory.Embeddings.Adapter
 alias Worth.Metrics.Repo
 
-# --- Data directory (OS-conventional, auto-detected) ---
+# --- Data directory ---
+# NOTE: the *actual* data-dir path is resolved at runtime in runtime.exs.
+# Here we only provide a dev/test fallback so that `mix` tasks work outside
+# a release.  Release builds must never rely on this value.
 worth_data =
-  case :os.type() do
-    {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
-    {:win32, _} -> "LOCALAPPDATA" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
-    {:unix, _} -> "XDG_DATA_HOME" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
+  case config_env() do
+    env when env in [:dev, :test] ->
+      case :os.type() do
+        {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
+        {:win32, _} -> "LOCALAPPDATA" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
+        {:unix, _} -> "XDG_DATA_HOME" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
+      end
+
+    _ ->
+      nil
   end
 
 # --- AgentEx ---
@@ -19,7 +28,7 @@ config :agent_ex,
     AgentEx.LLM.Provider.Anthropic,
     AgentEx.LLM.Provider.OpenAI
   ],
-  catalog: [persist_path: Path.join(worth_data, "catalog.json")]
+  catalog: [persist_path: worth_data && Path.join(worth_data, "catalog.json")]
 
 # --- esbuild ---
 config :esbuild,
@@ -68,7 +77,7 @@ config :tailwind,
 # contend with the main database for I/O or lock time.
 config :worth, Repo,
   adapter: SQLite3,
-  database: Path.join(worth_data, "metrics.db"),
+  database: worth_data && Path.join(worth_data, "metrics.db"),
   pool_size: 2,
   start_apps_before_migration: false
 
@@ -77,7 +86,7 @@ config :worth, Repo,
 # Database lives in the OS-conventional data directory.
 config :worth, Worth.Repo,
   adapter: SQLite3,
-  database: Path.join(worth_data, "worth.db"),
+  database: worth_data && Path.join(worth_data, "worth.db"),
   pool_size: 5
 
 # --- Vault (ciphers configured at runtime after password unlock) ---
